@@ -745,7 +745,7 @@ y = tabela_ia["champion_num"]
 
 # modelo_ia.fit(X, y, sample_weight = tabela_ia["peso_final"].values)
 
-print(f"IA treinada com sucesso! Liga ativa {liga_ativa} | Linhas de treino: {len(tabela_ia)}")
+# print(f"IA treinada com sucesso! Liga ativa {liga_ativa} | Linhas de treino: {len(tabela_ia)}")
 
 # %%
 import os
@@ -799,6 +799,25 @@ def confronto_valido(tabela_liga_ativa):
     return confronto
 
 
+def mapear_oponentes(tabela):
+
+    confronto = confronto_valido(tabela)
+
+    return confronto[["gameid", "teamname", "teamname_adv"]]
+
+
+def ordernar_times_alfa(tabela):
+
+    tabela = tabela.copy()
+
+    primeiro_time_alfa = np.where(tabela["teamname"] < tabela["teamname_adv"], tabela["teamname"], tabela["teamname_adv"])
+    segundo_time_alfa = np.where(tabela["teamname"] < tabela["teamname_adv"], tabela["teamname_adv"], tabela["teamname"])
+
+    tabela["partida"] = primeiro_time_alfa + "|" + segundo_time_alfa
+
+    return tabela
+
+
 def processar_picks(tabela_liga_ativa, meia_vida_dias = 45):
 
     decaimento = calcular_decaimento(meia_vida_dias)
@@ -829,9 +848,56 @@ def processar_picks(tabela_liga_ativa, meia_vida_dias = 45):
     prioridade_p1 = peso_champ_fp.div(peso_fp_time, level = "teamname")
     prioridade_p1 = prioridade_p1.unstack(fill_value = 0).round(4)
 
+    # Confronto direto
+
+    mapa_adv = mapear_oponentes(tabela_liga_ativa)
+
+    jogos_confronto = jogadores.merge(mapa_adv, on = ["gameid", "teamname"], how = "inner")
+    jogos_confronto = ordernar_times_alfa(jogos_confronto)
+    jogos_confronto = calcular_peso_tempo(jogos_confronto, "partida", decaimento)
+
+    campeao_peso = jogos_confronto.groupby(["teamname", "teamname_adv", "champion"])["peso_tempo"].sum()
+    confronto_total = jogos_confronto.groupby(["teamname", "teamname_adv"])["peso_tempo"].sum()
+
+    jogos_contra_adv = confronto_total.to_dict()
+
+    picks_confronto = {}
+    taxa_camp = (campeao_peso / confronto_total).round(4)
+
+    for (time, adv, champ), taxa in taxa_camp.items():
+        duelo = (time, adv)
+
+        if duelo not in picks_confronto:
+            picks_confronto[duelo] = {}
+
+        picks_confronto[duelo][champ] = taxa
+
+    jogos_confronto_fp = ordernar_times_alfa(confronto_fp)
+    jogos_confronto_fp = calcular_peso_tempo(jogos_confronto_fp, "partida", decaimento)
+
+    campeao_fp_peso = jogos_confronto_fp.groupby(["teamname", "teamname_adv", "pick1"])["peso_tempo"].sum()
+    tot_fp_confronto =  jogos_confronto_fp.groupby(["teamname", "teamname_adv"])["peso_tempo"].sum()
+
+    total_fp_confronto = tot_fp_confronto.to_dict()
+
+    picks_fp_confronto = {}
+    taxa_camp_fp = (campeao_fp_peso / tot_fp_confronto).round(4)
+
+    for (nome_time, nome_adv, champ), taxa in taxa_camp_fp.items():
+        times = (nome_time, nome_adv)
+
+        if times not in picks_fp_confronto:
+            picks_fp_confronto[times] = {}
+
+        picks_fp_confronto[times][champ] = taxa
+
     return {
         "prioridade_historica" : prioridade_historica,
-        "prioridade_p1" : prioridade_p1
+        "prioridade_p1" : prioridade_p1,
+        "jogos_contra_adv" : jogos_contra_adv,
+        "picks_confronto" : picks_confronto,
+        "total_fp_confronto" : total_fp_confronto,
+        "picks_fp_confronto" : picks_fp_confronto
     }
 
 
@@ -857,7 +923,7 @@ def _contagem_bans_peso(df, alvo_cols, grupo_cols):
     return bans_peso
 
 
-def indentificar_first_pick(bans_agrupados, valor_fp):
+def identificar_first_pick(bans_agrupados, valor_fp):
 
     if bans_agrupados.empty:
         return {}
@@ -874,25 +940,66 @@ def processar_bans(tabela_liga_ativa, meia_vida_dias = 45):
 
     decaimento = calcular_decaimento(meia_vida_dias)
 
+    jogos_time = confronto_valido(tabela_liga_ativa)
+    jogos_time["date"] = pd.to_datetime(jogos_time["date"])
+    jogos_time = calcular_peso_tempo(jogos_time, "teamname", decaimento)
+
+    status_fp = ["teamname", "firstPick"]
+
+    peso_por_grupo = jogos_time.groupby(status_fp)["peso_tempo"].sum()
+    total_fp = identificar_first_pick(peso_por_grupo, 1)
+    total_lp = identificar_first_pick(peso_por_grupo, 0)
+
+    bans_time = _contagem_bans_peso(jogos_time, ["ban1", "ban2", "ban3"], status_fp)
+
+    ban_fase1_fp = identificar_first_pick(bans_time, 1)
+    ban_fase1_lp = identificar_first_pick(bans_time, 0)
+
+    bans_adv = _contagem_bans_peso(jogos_time, ["ban1_adv", "ban2_adv", "ban3_adv", "ban4_adv", "ban5_adv"], status_fp)
+
+    ban_contra_fp = identificar_first_pick(bans_adv, 1)
+    ban_contra_lp = identificar_first_pick(bans_adv, 0)
+
     confronto = confronto_valido(tabela_liga_ativa)
-    confronto["date"] = pd.to_datetime(confronto["date"])
-    confronto = calcular_peso_tempo(confronto, "teamname", decaimento)
+    confronto_adv = ordernar_times_alfa(confronto)
+    confronto_adv["date"] = pd.to_datetime(confronto_adv["date"])
+    confronto_adv = calcular_peso_tempo(confronto_adv, "partida", decaimento)
 
-    jogo_time = ["teamname", "firstPick"]
+    status_fp_jogo = ["teamname", "teamname_adv", "firstPick"]
 
-    peso_por_grupo = confronto.groupby(jogo_time)["peso_tempo"].sum()
-    total_fp = indentificar_first_pick(peso_por_grupo, 1)
-    total_lp = indentificar_first_pick(peso_por_grupo, 0)
+    bans_confronto = _contagem_bans_peso(confronto_adv, ["ban1", "ban2", "ban3", "ban4", "ban5"], status_fp_jogo)
+    peso_confronto = confronto_adv.groupby(status_fp_jogo)["peso_tempo"].sum()
 
-    bans_time = _contagem_bans_peso(confronto, ["ban1", "ban2", "ban3"], jogo_time)
+    bans_vs_fp = {}
+    bans_vs_lp = {}
 
-    ban_fase1_fp = indentificar_first_pick(bans_time, 1)
-    ban_fase1_lp = indentificar_first_pick(bans_time, 0)
+    taxa_ban_vs = (bans_confronto / peso_confronto).round(4) 
 
-    bans_adv = _contagem_bans_peso(confronto, ["ban1_adv", "ban2_adv", "ban3_adv", "ban4_adv", "ban5_adv"], jogo_time)
+    for (time, adv, fp_status, champ), taxa in taxa_ban_vs.items():
+        duelo = (time, adv)
 
-    ban_contra_fp = indentificar_first_pick(bans_adv, 1)
-    ban_contra_lp = indentificar_first_pick(bans_adv, 0)
+        if fp_status == 1:
+            lado = bans_vs_fp
+        else:
+            lado = bans_vs_lp
+
+        if duelo not in lado:
+            lado[duelo] = {}
+
+        lado[duelo][champ] = taxa
+
+    jogos_vs_fp = {}
+    jogos_vs_lp = {}
+
+    for (nome_time, nome_adv, fp_status), jogos in peso_confronto.items():
+        times = (nome_time, nome_adv)
+
+        if fp_status == 1:
+            lado_vs = jogos_vs_fp
+        else:
+            lado_vs = jogos_vs_lp
+
+        lado_vs[times] = jogos
 
     return {
         "ban_fase1_fp" : ban_fase1_fp,
@@ -902,13 +1009,21 @@ def processar_bans(tabela_liga_ativa, meia_vida_dias = 45):
         "ban_contra_fp" : ban_contra_fp,
         "ban_contra_lp" : ban_contra_lp,
         "total_contra_fp" : dict(total_fp),
-        "total_contra_lp" : dict(total_lp)
+        "total_contra_lp" : dict(total_lp),
+        "bans_vs_fp" : bans_vs_fp,
+        "bans_vs_lp" : bans_vs_lp,
+        "jogos_vs_fp": jogos_vs_fp,
+        "jogos_vs_lp" : jogos_vs_lp
     }
 
 picks_stats = processar_picks(tabela_liga_ativa)
 
 prioridade_historica = picks_stats["prioridade_historica"]
 prioridade_p1 = picks_stats["prioridade_p1"]
+jogos_contra_adv = picks_stats["jogos_contra_adv"]
+picks_confronto = picks_stats["picks_confronto"]
+total_fp_confronto = picks_stats["total_fp_confronto"]
+picks_fp_confronto = picks_stats["picks_fp_confronto"]
 
 bans_stats = processar_bans(tabela_liga_ativa)
 
@@ -920,6 +1035,10 @@ ban_contra_fp = bans_stats["ban_contra_fp"]
 ban_contra_lp = bans_stats["ban_contra_lp"]
 total_contra_fp = bans_stats["total_contra_fp"]
 total_contra_lp = bans_stats["total_contra_lp"]
+bans_vs_fp = bans_stats["bans_vs_fp"]
+bans_vs_lp = bans_stats["bans_vs_lp"]
+jogos_vs_fp = bans_stats["jogos_vs_fp"]
+jogos_vs_lp = bans_stats["jogos_vs_lp"]
 
 # %%
 caminho_dados_draft = os.path.join(pasta_raiz, "modelos_treinados", "dados_draft.joblib")
@@ -1177,11 +1296,24 @@ def preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo):
     return num_bans[:10]
 
 
+def nota_contexto(nota_geral, nota_confronto_adv, qtd_jogos, k_credibilidade = 3, teto_confianca = 0.45):
+
+    if qtd_jogos <= 0:
+        return nota_geral
+
+    confianca = qtd_jogos / (qtd_jogos + k_credibilidade)
+    confianca = min(confianca, teto_confianca)
+
+    nota_final = nota_geral * (1 - confianca) + nota_confronto_adv * confianca
+
+    return nota_final
+
+
 def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks_totais, time_tem_p1_no_jogo, retornar_lista = False, modelo = None):
 
     from random import choices
 
-    global prioridade_historica, prioridade_p1, ban_contra_fp, ban_contra_lp, total_contra_fp, total_contra_lp
+    global prioridade_historica, prioridade_p1, ban_contra_fp, ban_contra_lp, total_contra_fp, total_contra_lp, total_fp_confronto, picks_fp_confronto, jogos_contra_adv, picks_confronto
 
     if modelo is not None:
         modelo_usado = modelo
@@ -1290,7 +1422,10 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                 if camp not in pool_p1_valido:
                     continue
 
-                prio_time = prioridade_p1.loc[time1].get(camp, 0)
+                champs_geral_p1 = prioridade_p1.loc[time1].get(camp, 0)
+                champ_confronto_p1 = picks_fp_confronto.get((time1, time2), {}).get(camp, 0)
+                confronto_fp_total = total_fp_confronto.get((time1, time2), 0)
+                prio_time = nota_contexto(champs_geral_p1, champ_confronto_p1, confronto_fp_total)
                 prio_hist = prio_time
 
                 score = ((prio_time * peso_hist) + (prio_ia * peso_ia) + (bonus_oportunidade * peso_oportunidade))
@@ -1299,7 +1434,10 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                 prio_time = 0
 
                 if time1 in prioridade_historica.index:
-                    prio_time = prioridade_historica.loc[time1].get(camp, 0)
+                    champs_geral = prioridade_historica.loc[time1].get(camp, 0)
+                    champ_confronto = picks_confronto.get((time1, time2), {}).get(camp, 0)
+                    qtd_jogos = jogos_contra_adv.get((time1, time2), 0)
+                    prio_time = nota_contexto(champs_geral, champ_confronto, qtd_jogos)
                 
                 prio_hist = prio_time * fator_pool
                 bonus_sinergia = 0
@@ -1446,7 +1584,7 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
          
 def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks, time_tem_p1_no_jogo, modelo = None):
 
-    global prioridade_historica, ban_fase1_fp, ban_fase1_lp, total_fp, total_lp, ban_contra_fp, ban_contra_lp, total_contra_fp, total_contra_lp
+    global prioridade_historica, ban_fase1_fp, ban_fase1_lp, total_fp, total_lp, ban_contra_fp, ban_contra_lp, total_contra_fp, total_contra_lp, bans_vs_fp, bans_vs_lp, jogos_vs_fp, jogos_vs_lp
 
     if modelo is not None:
         modelo_usado = modelo
@@ -1477,6 +1615,8 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
     
     historico_aliado = ban_fase1_fp if time_tem_p1_no_jogo else ban_fase1_lp
     total_aliado_ctx = total_fp if time_tem_p1_no_jogo else total_lp
+    bans_champ_vs = bans_vs_fp if time_tem_p1_no_jogo else bans_vs_lp
+    bans_vs_adv = jogos_vs_fp if time_tem_p1_no_jogo else jogos_vs_lp
 
     historico_contra = ban_contra_lp if time_tem_p1_no_jogo else ban_contra_fp
     total_contra_ctx = total_contra_lp if time_tem_p1_no_jogo else total_contra_fp
@@ -1567,7 +1707,10 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
             bonus_historico_aliado = 0
 
             if total_jogos_aliado > minimo_exposicao:
-                bonus_historico_aliado = min(contagem_bans / total_jogos_aliado, 0.25)
+                nota_geral_ban = contagem_bans / total_jogos_aliado
+                nota_bans_champ = bans_champ_vs.get((time1, time2), {}).get(camp, 0)
+                bans_confronto = bans_vs_adv.get((time1, time2), 0) 
+                bonus_historico_aliado = min(nota_contexto(nota_geral_ban, nota_bans_champ, bans_confronto), 0.25)
             
             bonus_ameaca_oculta = 0
 
@@ -1699,7 +1842,7 @@ time2 = "RED Canids"
 
 historico_fearless = []
 
-resultado_serie = ordemPicksBans(time1, time2, 3)
+resultado_serie = ordemPicksBans(time1, time2, 1)
 
 for i, jogo in enumerate(resultado_serie):
     pFP, bFP, pLP, bLP = jogo
