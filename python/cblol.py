@@ -897,7 +897,8 @@ def processar_picks(tabela_liga_ativa, meia_vida_dias = 45):
         "jogos_contra_adv" : jogos_contra_adv,
         "picks_confronto" : picks_confronto,
         "total_fp_confronto" : total_fp_confronto,
-        "picks_fp_confronto" : picks_fp_confronto
+        "picks_fp_confronto" : picks_fp_confronto,
+        "peso_total_jogos" : peso_total_jogos
     }
 
 
@@ -1024,6 +1025,7 @@ jogos_contra_adv = picks_stats["jogos_contra_adv"]
 picks_confronto = picks_stats["picks_confronto"]
 total_fp_confronto = picks_stats["total_fp_confronto"]
 picks_fp_confronto = picks_stats["picks_fp_confronto"]
+peso_total_jogos = picks_stats["peso_total_jogos"]
 
 bans_stats = processar_bans(tabela_liga_ativa)
 
@@ -1296,7 +1298,7 @@ def preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo):
     return num_bans[:10]
 
 
-def nota_contexto(nota_geral, nota_confronto_adv, qtd_jogos, k_credibilidade = 3, teto_confianca = 0.45):
+def nota_contexto(nota_geral, nota_condicional, qtd_jogos, k_credibilidade = 6, teto_confianca = 50):
 
     if qtd_jogos <= 0:
         return nota_geral
@@ -1304,7 +1306,7 @@ def nota_contexto(nota_geral, nota_confronto_adv, qtd_jogos, k_credibilidade = 3
     confianca = qtd_jogos / (qtd_jogos + k_credibilidade)
     confianca = min(confianca, teto_confianca)
 
-    nota_final = nota_geral * (1 - confianca) + nota_confronto_adv * confianca
+    nota_final = nota_geral * (1 - confianca) + nota_condicional * confianca
 
     return nota_final
 
@@ -1385,14 +1387,42 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
         campeoes_modelo = cod_camp.inverse_transform(modelo_usado.classes_)
         raking_ia = pd.Series(probs, index = campeoes_modelo)
 
-        for camp in cod_camp.classes_:
+        pool_rota = []
 
-            if camp in proibidos:
+        for champ in cod_camp.classes_:
+
+            if champ in proibidos:
                 continue
-            if camp not in dna_campeoes:
+            if champ not in dna_campeoes:
                 continue
-            if dna_campeoes[camp].get(rota, 0) < limiar_flex:
+            if dna_campeoes[champ].get(rota, 0) < limiar_flex:
                 continue
+
+            pool_rota.append(champ)
+
+        jogados_rota = {}
+
+        for champ in pool_rota:
+
+            if time1 in prioridade_historica.index:
+                jogados_rota[champ] = prioridade_historica.loc[time1].get(champ, 0)
+            else:
+                jogados_rota[champ] = 0
+
+        maior_freq_rota = max(jogados_rota.values(), default = 0)
+
+        pool_normalizada = {}
+
+        for champ, val in jogados_rota.items():
+
+            if maior_freq_rota > 0:
+                pool_normalizada[champ] = val / maior_freq_rota
+            else:
+                pool_normalizada[champ] = 0
+
+        peso_pool = peso_total_jogos.get(time1, 0)
+
+        for camp in pool_rota:
             
             prio_ia = raking_ia.get(camp, 0)
             bonus_sinergia = 0
@@ -1418,7 +1448,7 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                     decaida = max(1.0 - (n_picks_feitos * 0.25), 0)
                     bonus_oportunidade = (taxa_ameaca * 0.40) * decaida
 
-            if e_primeiro_pick_time and time_tem_p1_no_jogo:  
+            if e_primeiro_pick_time and time_tem_p1_no_jogo:
                 if camp not in pool_p1_valido:
                     continue
 
@@ -1435,9 +1465,12 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
 
                 if time1 in prioridade_historica.index:
                     champs_geral = prioridade_historica.loc[time1].get(camp, 0)
+                    prio_normalizada = pool_normalizada.get(camp, 0)
+                    prio_base = nota_contexto(champs_geral, prio_normalizada, peso_pool, 8, 0.80)
+
                     champ_confronto = picks_confronto.get((time1, time2), {}).get(camp, 0)
                     qtd_jogos = jogos_contra_adv.get((time1, time2), 0)
-                    prio_time = nota_contexto(champs_geral, champ_confronto, qtd_jogos)
+                    prio_time = nota_contexto(prio_base, champ_confronto, qtd_jogos)
                 
                 prio_hist = prio_time * fator_pool
                 bonus_sinergia = 0
@@ -1560,8 +1593,8 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
 
     if score_candidatos:
         score_candidatos.sort(key = lambda x: x[1], reverse = True)
-        top3_picks = [camp for camp, score in score_candidatos[:3]]
-        pesos = [score for camp, score in score_candidatos[:3]]
+        top3_picks = [camp for camp, score in score_candidatos[:1]]
+        pesos = [score for camp, score in score_candidatos[:1]]
 
         if retornar_lista:
             return top3_picks
@@ -1838,11 +1871,11 @@ print(times_liga_ativa)
 
 # %%
 time1 = "FURIA"
-time2 = "RED Canids"
+time2 = "LØS"
 
 historico_fearless = []
 
-resultado_serie = ordemPicksBans(time1, time2, 1)
+resultado_serie = ordemPicksBans(time1, time2, 3)
 
 for i, jogo in enumerate(resultado_serie):
     pFP, bFP, pLP, bLP = jogo
