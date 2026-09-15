@@ -253,3 +253,8 @@ def pedir_sugestao(sessionId: str = Query(...)):
     return{
         "champion": champion
     }
+
+
+@app.get("/ligas/disponiveis")
+def listar_ligas_treinadas():
+    return {"ligas": sorted(modelos_cache.ligas_treinadas)}

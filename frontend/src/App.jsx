@@ -18,6 +18,8 @@ function App() {
   const [dadosDraftJava, setDadosDraftJava] = useState(null);
   const [jogadorAtual, setJogadorAtual] = useState('PLAYER');
   const [buscarChamp, setBuscarChamp] = useState('');
+  const [ligaEscolhido, setLigaEscolhida] = useState('CBLOL')
+  const [ligaDisponiveis, setLigasDisponiveis] = useState([])
 
   useEffect(() => {
   if (draftService.getSessionId()) {
@@ -26,6 +28,7 @@ function App() {
     })
   }
 }, [])
+
   useEffect(() => {
   if (draftService.getSessionId()) {
     draftService.sessao().then(sessao => {
@@ -33,11 +36,25 @@ function App() {
     })
   }
 }, [])
+
   useEffect(() => {
     if (dadosDraftJava) {
       obterSugestao();
     }
   }, [dadosDraftJava]);
+
+  useEffect(() => {
+    const carregarLigas = async() => {
+      try {
+        const lista = await draftService.getLigasDisponiveis()
+      setLigasDisponiveis(lista.ligas)
+      } catch(e){
+        console.error("Erro ao buscar ligas: ", e)
+        setLigasDisponiveis([])
+      }
+    }
+    carregarLigas()
+  }, [])
 
 const obterSugestao = async () => {
   try {
@@ -161,7 +178,8 @@ const obterSugestao = async () => {
       timeUsuario: timeConfirmadoBlue.name,
       timeIA: timeConfirmadoRed.name,
       quantidadeJogos: formatoMD,
-      isFirstPick: ladoFirstPick === 'BLUE'
+      isFirstPick: ladoFirstPick === 'BLUE',
+      liga: ligaEscolhido
     }
     try{
       const resultado = await draftService.iniciarDraft(dadosDraft)
@@ -182,7 +200,7 @@ const obterSugestao = async () => {
     botaoDesabilitado = false;
   }
 
-  const [formatoMD, setFormatoMD] = useState(1)
+  const [formatoMD, setFormatoMD] = useState(5)
 
   const[ladoFirstPick, setLadoFirstPick] = useState('BLUE')
 
@@ -287,10 +305,13 @@ const obterSugestao = async () => {
 
       <main className='champions-selection'>
         <header className="filter-header">
-          <input 
-          type="text" 
-          placeholder='Pesquisar Liga...' 
-          />
+          <select value = {ligaEscolhido} onChange={(e) => setLigaEscolhida(e.target.value)}>
+            {ligaDisponiveis.map((liga) =>(
+              <option key = {liga} value = {liga}>
+                {liga}
+              </option>
+            ))}
+          </select>
           <label>
             <input type="checkbox" checked={formatoMD === 1}
             onChange={() => setFormatoMD(1)} /> MD1

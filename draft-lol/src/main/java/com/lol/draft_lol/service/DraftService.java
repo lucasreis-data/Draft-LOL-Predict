@@ -58,7 +58,8 @@ public class DraftService {
       timeIA, 
       timeUsuario, 
       dados.quantidadeJogos(),
-      dados.isFirstPick()
+      dados.isFirstPick(),
+      dados.liga()
     );
     return pythonClient.iniciarDraft(dados);
   }

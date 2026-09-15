@@ -79,6 +79,11 @@ public class DraftController {
     return pythonClient.acessarSessao(request.sessionId());
   }
 
+  @GetMapping("/draft/ligas/disponiveis")
+  public Object ligasDisponiveis(){
+    return pythonClient.listarLigasDisponiveis();
+  }
+
   @PostMapping("/Prever")
   public ResponseEntity<Object> prever(@RequestBody @Valid DraftRequestDto request){
     try{

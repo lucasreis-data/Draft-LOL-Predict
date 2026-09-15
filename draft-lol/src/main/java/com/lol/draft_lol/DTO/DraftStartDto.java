@@ -24,6 +24,10 @@ public record DraftStartDto (
 
   @Schema(example = "true", description= "Você vai ser First Pick? sim(true) ou não (false) ")
   @JsonProperty("isFirstPick")
-  Boolean isFirstPick
-  
+  Boolean isFirstPick,
+
+  @Schema(example = "CBLOL", description = "Qual liga usar para as sugestões da IA")
+  @JsonProperty("liga")
+  String liga
+
 ){}
