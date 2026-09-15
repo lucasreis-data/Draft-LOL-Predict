@@ -158,7 +158,7 @@ def acao_draft(data: dict = Body(...)):
                 state["fearless"].append(champion)
         else:
             args = (
-                 state["time_user"], state["bans"]["player"], state["picks"]["player"],state["time_ia"], state["bans"]["ia"], state["picks"]["ia"], state["fearless"], not state["is_first_pick"]
+                 state["time_user"], state["bans"]["player"], state["picks"]["player"],state["time_ia"], state["bans"]["ia"], state["picks"]["ia"], state["fearless"], state["is_first_pick"]
                 )
             if is_ban:
                 champion = cblol.sugeriBans(*args, modelo = modelo)
@@ -245,7 +245,7 @@ def pedir_sugestao(sessionId: str = Query(...)):
     state = sessions[sessionId]
     modelo = obter_modelo_sessao(state)
 
-    args = ( state["time_user"], state["bans"]["player"], state["picks"]["player"], state["time_ia"], state["bans"]["ia"], state["picks"]["ia"], state["fearless"], not state["is_first_pick"])
+    args = ( state["time_user"], state["bans"]["player"], state["picks"]["player"], state["time_ia"], state["bans"]["ia"], state["picks"]["ia"], state["fearless"], state["is_first_pick"])
     if state["fase_atual"].startswith("BAN") :
         champion = cblol.sugeriBans(*args, modelo = modelo)
     else:

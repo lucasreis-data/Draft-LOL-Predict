@@ -1449,7 +1449,7 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                     bonus_oportunidade = (taxa_ameaca * 0.40) * decaida
 
             if e_primeiro_pick_time and time_tem_p1_no_jogo:
-                if camp not in pool_p1_valido:
+                if camp not in pool_p1_valido: # Tirar a proibição e passar uma punição no valor(ou bonus caso esteja dentro)
                     continue
 
                 champs_geral_p1 = prioridade_p1.loc[time1].get(camp, 0)
@@ -1593,8 +1593,8 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
 
     if score_candidatos:
         score_candidatos.sort(key = lambda x: x[1], reverse = True)
-        top3_picks = [camp for camp, score in score_candidatos[:1]]
-        pesos = [score for camp, score in score_candidatos[:1]]
+        top3_picks = [camp for camp, score in score_candidatos[:3]]
+        pesos = [score for camp, score in score_candidatos[:3]]
 
         if retornar_lista:
             return top3_picks
@@ -1870,12 +1870,12 @@ times_liga_ativa = tabela_liga_ativa["teamname"].unique()
 print(times_liga_ativa)
 
 # %%
-time1 = "FURIA"
+time1 = "paiN Gaming"
 time2 = "LØS"
 
 historico_fearless = []
 
-resultado_serie = ordemPicksBans(time1, time2, 3)
+resultado_serie = ordemPicksBans(time1, time2, 1)
 
 for i, jogo in enumerate(resultado_serie):
     pFP, bFP, pLP, bLP = jogo
