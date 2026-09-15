@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.lol.draft_lol.DTO.DraftAcaoDto;
@@ -57,8 +58,8 @@ public class DraftController {
   }
 
   @GetMapping("/Times")
-  public Object times(){
-    return pythonClient.listarTimes();
+  public List<String> listarTimes(@RequestParam(value = "liga", defaultValue = "LCK") String liga){
+    return draftService.listarTimesPorLiga(liga);
   }
 
   @GetMapping("/draft/champions")
@@ -66,8 +67,8 @@ public class DraftController {
     return championService.getCampeoes();
   }
    @GetMapping("/draft/times")
-  public List<String> listarTodosTimes(){
-    return timeService.getTimes();
+  public List<String> listarTodosTimes(@RequestParam(value = "liga", required = false) String liga){
+    return draftService.listarTimesPorLiga(liga);
   }
 
   @GetMapping("/draft/Sugestao")

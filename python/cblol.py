@@ -145,7 +145,7 @@ jogos_por_liga = tabela_final.groupby("league")["gameid"].nunique()
 print(jogos_por_liga.sort_values(ascending = False))
 
 # %%
-tabela_liga_ativa = filtar_dados(liga = "CBLOL", year = 2026)
+tabela_liga_ativa = filtar_dados(liga = None, year = 2026)
 
 def construir_df_meta(tabela_liga = None):
 

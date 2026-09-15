@@ -90,14 +90,14 @@ const obterSugestao = async () => {
   useEffect(() => {
     const carregarTimes = async () => {
       try {
-        const listNomes = await draftService.getTimes()
+        const listNomes = await draftService.getTimes(ligaEscolhido)
         setTimes(listNomes.map(nome=> ({name: nome})))
       } catch (e) {
-        console.error("erro ao buscar campeoes: ", e)
+        console.error("erro ao buscar times: ", e)
       }
     }
     carregarTimes()
-  }, [])
+  }, [ligaEscolhido])
   const[selecaoTemporaria, setSelecaoTemporaria] = useState(null)
   
 

@@ -26,6 +26,9 @@ public interface PythonDraftClient {
   @GetMapping("/times")
   List<String> listarTimes();
 
+  @GetMapping("/times")
+  List<String> listarTimes(@RequestParam("ligas") String liga);
+
   @GetMapping("/campeoes")
   List<String> listarCampeoes();
 

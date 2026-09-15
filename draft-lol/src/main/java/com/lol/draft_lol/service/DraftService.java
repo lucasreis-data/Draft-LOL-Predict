@@ -1,5 +1,6 @@
 package com.lol.draft_lol.service;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -46,14 +47,19 @@ public class DraftService {
   }
 
   public Object criarDraft(DraftStartDto dados){
-    if(!timeService.existe(dados.timeIA())){
+
+    List <String> timesLiga = listarTimesPorLiga(dados.liga());
+
+    if(!timesLiga.contains(dados.timeIA())){
       throw new IllegalArgumentException("Time não encontrado: " + dados.timeIA());
     }
-    if(!timeService.existe(dados.timeUsuario())){
+    if(!timesLiga.contains(dados.timeUsuario())){
       throw new IllegalArgumentException("Time não encontrado: " + dados.timeUsuario());
     }
+
     String timeIA = timeService.normalizar(dados.timeIA());
     String timeUsuario = timeService.normalizar(dados.timeUsuario());
+
     DraftStartDto dadosNormalizados = new DraftStartDto(
       timeIA, 
       timeUsuario, 
@@ -61,6 +67,7 @@ public class DraftService {
       dados.isFirstPick(),
       dados.liga()
     );
+
     return pythonClient.iniciarDraft(dados);
   }
 
@@ -95,5 +102,9 @@ public class DraftService {
     } catch (FeignException.NotFound e) {
       throw new IllegalArgumentException("Sessão não encontrada");
     }
+  }
+
+  public List<String> listarTimesPorLiga(String liga){
+    return pythonClient.listarTimes(liga);
   }
 }
