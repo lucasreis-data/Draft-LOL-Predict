@@ -41,6 +41,9 @@ def obter_times_liga(lista_liga = "CBLOL", year = None):
   
   if isinstance(lista_liga, str):
     lista_liga = [lista_liga]
+
+  if any(liga.strip().upper() == "GERAL" for liga in lista_liga):
+     return sorted(tabela_final["teamname"].unique().tolist())
   
   todos_times = []
 
@@ -774,14 +777,17 @@ def calcular_decaimento(meia_vida_dias = 45):
     return np.log(2) / meia_vida_dias
 
 
-def calcular_peso_tempo(df, colunas_time, taxa_decaimento):
+def calcular_peso_tempo(df, colunas_time, taxa_decaimento, reducao_por_jogo = 0.10):
 
     df = df.copy()
 
     df["ultima_data"] = df.groupby(colunas_time)["date"].transform("max")
-
     dias_passados = (df["ultima_data"] - df["date"]).dt.days
-    df["peso_tempo"] = np.exp(- taxa_decaimento * dias_passados)
+    
+    peso_data = np.exp(- taxa_decaimento * dias_passados)
+    peso_jogo = 1.0 -(df["game"] - 1) * reducao_por_jogo
+
+    df["peso_tempo"] = peso_data * peso_jogo
 
     return df
 
@@ -1298,7 +1304,7 @@ def preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo):
     return num_bans[:10]
 
 
-def nota_contexto(nota_geral, nota_condicional, qtd_jogos, k_credibilidade = 6, teto_confianca = 50):
+def nota_contexto(nota_geral, nota_condicional, qtd_jogos, k_credibilidade = 6, teto_confianca = 0.35):
 
     if qtd_jogos <= 0:
         return nota_geral
@@ -1361,8 +1367,8 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
 
     t = min(n_picks_feitos / 9.0, 1.0)
 
-    peso_hist = 0.30
-    peso_ia = 0.25
+    peso_hist = 0.25
+    peso_ia = 0.30
     peso_oportunidade = max(0.20 - (t * 0.20), 0.0)
     peso_sinergia = 0.08 + (t * 0.14)
     peso_counter = 0.17 + (t * 0.06)
@@ -1431,12 +1437,13 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
 
             if camp in camp_confort_time:
                 fator_pool = 1.00
-            elif camp in todos_camps_time:
+            elif camp in todos_camps_time: # Cogitar a possibilidade de tirar
                 fator_pool = 0.15
             else:
-                fator_pool = 0.02          
+                fator_pool = 0.10          
 
             bonus_oportunidade = 0
+            pena_hist = 0.02
 
             total_jogos_contra = total_contra_ctx.get(time1, 1)
             contagem_bans_contra = historico_contra.get((time1, camp), 0) + 1
@@ -1449,13 +1456,20 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                     bonus_oportunidade = (taxa_ameaca * 0.40) * decaida
 
             if e_primeiro_pick_time and time_tem_p1_no_jogo:
-                if camp not in pool_p1_valido: # Tirar a proibição e passar uma punição no valor(ou bonus caso esteja dentro)
-                    continue
-
                 champs_geral_p1 = prioridade_p1.loc[time1].get(camp, 0)
                 champ_confronto_p1 = picks_fp_confronto.get((time1, time2), {}).get(camp, 0)
                 confronto_fp_total = total_fp_confronto.get((time1, time2), 0)
                 prio_time = nota_contexto(champs_geral_p1, champ_confronto_p1, confronto_fp_total)
+                
+                if camp not in pool_p1_valido:
+                    geral_hist = prioridade_historica.loc[time1].get(camp, 0) if time1 in prioridade_historica.index else 0
+                    base_p1 = max(geral_hist, prio_time, pena_hist)
+                    
+                    if camp in todos_camps_time:
+                        prio_time = base_p1 * 0.60
+                    else:
+                        prio_time = base_p1 * 0.30
+
                 prio_hist = prio_time
 
                 score = ((prio_time * peso_hist) + (prio_ia * peso_ia) + (bonus_oportunidade * peso_oportunidade))
@@ -1466,13 +1480,14 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                 if time1 in prioridade_historica.index:
                     champs_geral = prioridade_historica.loc[time1].get(camp, 0)
                     prio_normalizada = pool_normalizada.get(camp, 0)
-                    prio_base = nota_contexto(champs_geral, prio_normalizada, peso_pool, 8, 0.80)
+                    prio_base = nota_contexto(champs_geral, prio_normalizada, peso_pool, 8, 0.30)
 
                     champ_confronto = picks_confronto.get((time1, time2), {}).get(camp, 0)
                     qtd_jogos = jogos_contra_adv.get((time1, time2), 0)
                     prio_time = nota_contexto(prio_base, champ_confronto, qtd_jogos)
-                
-                prio_hist = prio_time * fator_pool
+
+                prio_hist = max(prio_time, pena_hist) * fator_pool
+
                 bonus_sinergia = 0
                 bonus_counter = 0
 
@@ -1677,7 +1692,7 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
                 taxa = count / total
                 score_ban_fase2[ban] = score_ban_fase2.get(ban, 0) + taxa / len(picksTime1)
-    
+
     # Counter 
 
     score_counter = {}
@@ -1871,11 +1886,11 @@ print(times_liga_ativa)
 
 # %%
 time1 = "paiN Gaming"
-time2 = "LØS"
+time2 = "LOUD"
 
 historico_fearless = []
 
-resultado_serie = ordemPicksBans(time1, time2, 1)
+resultado_serie = ordemPicksBans(time1, time2, 3)
 
 for i, jogo in enumerate(resultado_serie):
     pFP, bFP, pLP, bLP = jogo
