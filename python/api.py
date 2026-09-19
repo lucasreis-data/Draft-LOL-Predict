@@ -86,8 +86,37 @@ def acessar_jogo(sessionId: str = Query(...)):
         "picksPlayer": state["picks"]["player"],
         "picksIA": state["picks"]["ia"],
         "fearless": state["fearless"]
-    }    
+    }
 
+
+@app.get("/stats/campeoes")
+def lista_campeoes_stats(
+    ligas : list[str] = Query(None),
+    year : int = Query(None),
+    posicao : str = Query(None)
+):
+    tabela_liga = cblol.filtar_dados(ligas, year)
+    
+    return cblol.ranking_meta(tabela_liga, posicao)
+
+
+@app.get("/stats/campeao")
+def campeao_scout(
+    campeao : str = Query(...),
+    ligas : list[str] = Query(None),
+    year : int = Query(None)
+):
+    tabela_dados = cblol.filtar_dados(ligas, year)
+    stats = cblol.estatistica_campeao(campeao, tabela_dados)
+    scout = cblol.scout_campeao(campeao, tabela_dados)
+
+    if stats is None or scout is None:
+        raise HTTPException(status_code = 404, detail = f"Campeão {campeao} sem dados suficientes")
+
+    scout["stats"] = stats
+    scout["top_players"] = cblol.top_player_camp(campeao, tabela_dados)
+
+    return scout
 
 # POST
 

@@ -1068,6 +1068,8 @@ else:
     contagem_exposicao = {}
     contagem_respostas = {}
 
+    ordem_draft = ordem_real.set_index(["gameid", "champion"])["ordem_pick"].to_dict()
+
     for (gameid, teamname), grupo in dados_players_global.groupby(["gameid", "teamname"]):
         champ = grupo["champion"].tolist()
 
@@ -1090,7 +1092,17 @@ else:
             for inimigo in picks_inimigo:
                 contagem_exposicao[inimigo] = contagem_exposicao.get(inimigo, 0) + 1
 
+                ordem_inimigo = ordem_draft.get((gameid, inimigo))
+
+                if ordem_inimigo is None:
+                    continue
+
                 for resposta in picks_aliado:
+                    ordem_resposta = ordem_draft.get((gameid, resposta))
+
+                    if ordem_resposta is None or ordem_resposta <= ordem_inimigo:
+                        continue
+
                     par = (inimigo, resposta)
                     contagem_respostas[par] = contagem_respostas.get(par, 0) + 1
         
@@ -1182,12 +1194,203 @@ matchup_total = dados_draft["matchup_total"]
 matchup_vitorias = dados_draft["matchup_vitorias"]
 
 # %%
+tot_jogos_camp = tabela_final[tabela_final["position"] != "team"].groupby("champion")["gameid"].nunique().to_dict()
+
+def resposta_rate(camp, contra):
+
+    total_contra = tot_jogos_camp.get(contra, 0)
+
+    if total_contra <= 0:
+        return 0
+
+    jogos_contra = contagem_respostas.get((contra, camp), 0)
+    jogos_resposta = jogos_contra / total_contra
+
+    return jogos_resposta
+
+
+def scout_campeao(champ_alvo, tabela = tabela_final, min_jogos = 50):
+
+    def pegar_winrate(matchup):
+        return matchup["win_rate"]
+    
+
+    jogos_alvo = tabela[(tabela["champion"] == champ_alvo) & (tabela["position"] != "team")][["gameid", "teamname"]].drop_duplicates()
+
+    total_jogos = len(jogos_alvo)
+
+    if total_jogos <= 0:
+        return None
+
+    df_duplas = pd.merge(jogos_alvo, tabela[tabela["champion"] != champ_alvo], on = ["gameid", "teamname"])
+
+    rotas_campeao = set()
+    dna_champ = dna_campeoes.get(champ_alvo, {})
+
+    for pos, pct in dna_champ.items():
+
+        if pct > limiar_flex:
+            rotas_campeao.add(pos)
+
+    duplas_por_rota = {}
+
+    for pos in ["top", "jng", "mid", "bot", "sup"]:
+
+        if pos in rotas_campeao:
+            continue
+
+        contagem_campeoes = df_duplas[df_duplas["position"] == pos]["champion"].value_counts().head(5)
+
+        lista_rota = []
+
+        for camp, qtd in contagem_campeoes.items():
+            frequencia_pct = round((qtd / total_jogos) * 100, 1)
+
+            lista_rota.append({
+                "champion" : camp,
+                "jogos" : int(qtd),
+                "frequencia": frequencia_pct
+            })
+
+        duplas_por_rota[pos] = lista_rota
+
+    forte_contra = []
+    fraco_contra = []
+
+    for (camp_a, camp_b), total in matchup_total.items():
+
+        if camp_a == champ_alvo and total > min_jogos:
+            vitorias = matchup_vitorias.get((camp_a, camp_b), 0)
+            win_rate = vitorias / total
+
+            matchup = {
+                "champion" : camp_b,
+                "win_rate" : round(win_rate * 100, 1),
+                "jogos" : int(total),
+                "resposta_rate" : round(resposta_rate(camp_b, camp_a) * 100, 1)
+            }
+
+            if win_rate >= 0.50: # analisar oq fazer com champs equilibrados
+                forte_contra.append(matchup)
+            else:
+                fraco_contra.append(matchup)
+
+    forte_contra = sorted(forte_contra, key = pegar_winrate, reverse = True)
+    fraco_contra = sorted(fraco_contra, key = pegar_winrate)
+
+    return{
+        "campeao" : champ_alvo,
+        "total_jogos" : total_jogos,
+        "rotas_campeao" : sorted(rotas_campeao),
+        "forte_contra" : forte_contra,
+        "fraco_contra" : fraco_contra,
+        "duplas" : duplas_por_rota
+    }
+
+
+def rota_moda(x):
+    return x.mode().iat[0]
+
+
+def ranking_meta(tabela = None, posicao = None, min_jogos = 1):
+
+    if tabela is None:
+        tabela = tabela_liga_ativa
+
+    df_players = tabela[tabela["position"] != "team"]
+    df_teams = tabela[tabela["position"] == "team"]
+
+    total_jogos = tabela["gameid"].nunique()
+    bans_contagem = pd.concat([df_teams[f"ban{i}"] for i in range(1, 6)]).value_counts()
+
+    if total_jogos <= 0:
+        return []
+
+    df_meta_liga = construir_df_meta(tabela)
+
+    stats = df_players.groupby("champion").agg(
+        jogos = ("champion", "count"),
+        vitorias = ("result",  "sum")
+    )
+
+    stats["posicao"] = df_players.groupby("champion")["position"].agg(rota_moda)
+
+    fp_wr = df_players[df_players["firstPick"] == 1].groupby("champion")["result"].mean().mul(100).round(1)
+    fp_jogos = df_players[df_players["firstPick"] == 1].groupby("champion").size()
+
+    lp_wr = df_players[df_players["firstPick"] == 0].groupby("champion")["result"].mean().mul(100).round(1)
+    lp_jogos = df_players[df_players["firstPick"] == 0].groupby("champion").size()
+
+    stats["win_rate"] = (stats["vitorias"] / stats["jogos"] * 100).round(1)
+    stats["pick_rate"] = df_meta_liga["pick_rate"].reindex(stats.index).fillna(0).round(1)
+    stats["ban_rate"] = df_meta_liga["ban_rate"].reindex(stats.index).fillna(0).round(1)
+    stats["bans"] = bans_contagem.reindex(stats.index).fillna(0).astype(int)
+    stats["presence"] = df_meta_liga["presence"].reindex(stats.index).fillna(0).round(1)
+    stats["fp_wr"] = fp_wr.reindex(stats.index).fillna(0).round(1)
+    stats["fp_jogos"] = fp_jogos.reindex(stats.index).fillna(0).astype(int)
+    stats["lp_wr"] = lp_wr.reindex(stats.index).fillna(0)
+    stats["lp_jogos"] = lp_jogos.reindex(stats.index).fillna(0).astype(int)
+
+    stats = stats[stats["jogos"] >= min_jogos]
+
+    if posicao is not None and posicao != "all":
+        stats = stats[stats["posicao"] == posicao]
+
+    stats = stats.sort_values("presence", ascending = False)
+    stats.index.name = "champion"
+
+    return stats.reset_index()[[
+        "champion", "posicao", "win_rate", "pick_rate", "ban_rate", "bans",
+        "presence", "jogos", "fp_wr", "lp_wr", "fp_jogos", "lp_jogos" 
+    ]].to_dict(orient = "records")
+
+
+
+def estatistica_campeao(camp_alvo, tabela = tabela_final):
+
+    lista = ranking_meta(tabela, posicao = None, min_jogos = 1)
+
+    for linha in lista:
+
+        if linha["champion"] == camp_alvo:
+            resultado = dict(linha)
+            resultado.pop("posicao", None)
+
+            return resultado
+
+    return None
+
+
+def top_player_camp(camp_ref, tabela = tabela_final):
+
+    df_camp = tabela[(tabela["champion"] == camp_ref) & (tabela["position"] != "team")]
+
+    if df_camp.empty:
+        return []
+
+    stats = df_camp.groupby("playername").agg(
+        time = ("teamname", "last"),
+        partidas = ("champion", "count"),
+        vitorias = ("result", "sum")
+    )
+
+    stats["win_rate"] = (stats["vitorias"] / stats["partidas"] * 100).round(1)
+
+    stats = stats.sort_values("partidas", ascending = False).head(10)
+    stats.index.name = "player"
+
+    return stats.reset_index()[["player", "time", "partidas", "win_rate"]].to_dict(orient = "records")
+    
+
+# %%
 import modelos_cache
 
 limiar_flex = 0.10
 minimo_exposicao = 3
 limitar_ban_proprio = 0.03
+
 patch_atual = int(tabela_final["patch_num"].max())
+tot_picks_geral = sum(contagem_exposicao.values())
 
 
 def gerar_Dna_Automatico(df_completo):
@@ -1234,37 +1437,6 @@ def get_posicoes_ocupadas(lista_picks, dna_campeoes):
                 break
 
     return list(rotas_ocupadas.keys())    
-
-
-def get_winrate(camp, contra):
-    total = matchup_total.get((camp, contra), 0)
-    if total < minimo_exposicao:
-        return 0.5
-    return matchup_vitorias.get((camp, contra), 0) / total
-
-
-def get_threshold_counter(total_jogos):
-    if total_jogos < 10:
-        return 1.0
-    elif total_jogos < 30:
-        return 0.68
-    elif total_jogos < 50:
-        return 0.63
-    elif total_jogos < 100:
-        return 0.58
-    else:
-        return 0.55
-    
-
-def get_forca_counter(camp, meu_pick):
-    total = matchup_total.get((camp, meu_pick), 0)
-    threshold = get_threshold_counter(total)
-    winrate = get_winrate(camp, meu_pick)
-
-    if winrate <= threshold:
-        return 0.0
-    
-    return min((winrate - threshold) / (1.0 -threshold), 1.0)
 
 
 def preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo):
@@ -1317,6 +1489,42 @@ def nota_contexto(nota_geral, nota_condicional, qtd_jogos, k_credibilidade = 6, 
     return nota_final
 
 
+def peso_counter_condicional(vitorias, qtd_jogos, win_rate_geral, k_credibilidade = 15, teto_confianca = 0.90):
+
+    if qtd_jogos <= 0:
+        return 0
+
+    taxa_vitoria = vitorias / qtd_jogos
+
+    taxa_ajustada = nota_contexto(win_rate_geral, taxa_vitoria, qtd_jogos, k_credibilidade, teto_confianca)
+    taxa_final = taxa_ajustada - win_rate_geral
+
+    return taxa_final
+
+
+def forca_matchup(camp, inimigo, buff = 1.5):
+
+    total_jogos = matchup_total.get((camp, inimigo), 0)
+    vitorias = matchup_vitorias.get((camp, inimigo), 0)
+
+    impacto_matchup = peso_counter_condicional(vitorias, total_jogos, 0.5)
+
+    return impacto_matchup * buff
+
+
+def resposta_camp(camp, inimigo): # vOu mudar o nome
+
+    pick_adv_global = contagem_exposicao.get(inimigo, 0)
+    pick_contra_adv = contagem_respostas.get((inimigo, camp), 0)
+
+    presenca_pick = contagem_exposicao.get(camp, 0) / tot_picks_geral if tot_picks_geral > 0 else 0
+
+    peso_resposta = peso_counter_condicional(pick_contra_adv, pick_adv_global, presenca_pick)
+
+    return peso_resposta
+    
+
+
 def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks_totais, time_tem_p1_no_jogo, retornar_lista = False, modelo = None):
 
     from random import choices
@@ -1337,6 +1545,7 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
         return "Time Completo"
     
     pool_do_time = tabela_liga_ativa[tabela_liga_ativa["teamname"] == time1]
+    rotas_por_campeao = pool_do_time.groupby("champion")["position"].apply(set).to_dict()
 
     if time1 in prioridade_p1.index:
         serie_p1 = prioridade_p1.loc[time1]
@@ -1436,9 +1645,8 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
             prio_hist = 0
 
             if camp in camp_confort_time:
-                fator_pool = 1.00
-            elif camp in todos_camps_time: # Cogitar a possibilidade de tirar
-                fator_pool = 0.15
+                rotas_jogadas = rotas_por_campeao.get(camp, set())
+                fator_pool = 1.02 if len(rotas_jogadas) >= 2 else 1.00
             else:
                 fator_pool = 0.10          
 
@@ -1536,9 +1744,11 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                     punicao_lane = 0            
 
                     for inimigo in picksTime2:
-                        
-                        forca = get_forca_counter(camp, inimigo)
-                        punicao = get_forca_counter(inimigo, camp)
+
+                        valor_matchup = forca_matchup(camp, inimigo)
+
+                        forca = max(valor_matchup, 0)
+                        punicao = max(-valor_matchup, 0)
 
                         if inimigo == adv_lane:
                             forca_lane = forca
@@ -1547,15 +1757,8 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                             lista_forcas.append(forca)
                             lista_punicao.append(punicao)
 
-                        n_resposta = contagem_respostas.get((inimigo, camp), 0)
-                        n_inimigo = contagem_exposicao.get(inimigo, 0)
-
-                        lista_resposta.append(n_resposta / n_inimigo if n_inimigo > minimo_exposicao else 0)
-
-                        n_punicao = contagem_respostas.get((camp, inimigo), 0)
-                        n_team = contagem_exposicao.get(camp, 0)
-
-                        lista_puni_resp.append(n_punicao / n_team if n_team > minimo_exposicao else 0)
+                        lista_resposta.append(resposta_camp(camp, inimigo))
+                        lista_puni_resp.append(resposta_camp(inimigo, camp))
 
                     if len(lista_forcas) > 0:
                         avg_forca = sum(lista_forcas) / len(lista_forcas)
@@ -1568,8 +1771,8 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                         avg_punicao = 0
 
                     if adv_lane:
-                        balanco_positivo = (forca_lane * 0.6) + (avg_forca * 0.4)
-                        balanco_negativo = (punicao_lane * 0.6) + (avg_punicao * 0.4)
+                        balanco_positivo = (forca_lane * 0.65) + (avg_forca * 0.35)
+                        balanco_negativo = (punicao_lane * 0.65) + (avg_punicao * 0.35)
                     else:
                         if len(lista_forcas) > 0:
                             max_forca = max(lista_forcas)
@@ -1703,7 +1906,7 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
             forca_total = 0      
 
             for meu_pick in picksTime1:
-                forca_total += get_forca_counter(camp, meu_pick)
+                forca_total += max(forca_matchup(camp, meu_pick), 0)
 
             score_counter[camp] = min(forca_total / len(picksTime1), 0.25)
 
@@ -1886,7 +2089,7 @@ print(times_liga_ativa)
 
 # %%
 time1 = "paiN Gaming"
-time2 = "LOUD"
+time2 = "Vivo Keyd Stars"
 
 historico_fearless = []
 

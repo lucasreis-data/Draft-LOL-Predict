@@ -22,10 +22,17 @@
       --text-hi:   #e8f4ff;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px; min-height: 100vh; }
-    .layout { display: flex; min-height: 100vh; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px; min-height: 100vh; display: flex; flex-direction: column; }
+    .layout { display: flex; flex: 1; min-height: 0; }
 
-    .sidebar { width: 210px; min-width: 210px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 16px 10px; gap: 8px; position: sticky; top: 0; height: 100vh; overflow: hidden; }
+    /* ── MODE SWITCH (Análise de Time / Campeões) ── */
+    .mode-switch { display: flex; gap: 4px; padding: 10px 16px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+    .mode-btn { padding: 7px 16px; border-radius: 4px; cursor: pointer; color: var(--text-dim); font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; transition: all .15s; }
+    .mode-btn:hover { color: var(--text); background: var(--bg3); }
+    .mode-btn.ativo { color: var(--teal); background: var(--teal-glow); }
+
+    .sidebar { width: 210px; min-width: 210px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 16px 10px; gap: 8px; overflow: hidden; }
+    .sidebar-modo { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
     .sidebar-logo { font-family: 'Rajdhani', sans-serif; font-size: 18px; font-weight: 700; color: var(--teal); letter-spacing: 2px; text-transform: uppercase; padding: 0 4px 12px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
     .sidebar-logo span { color: var(--text-dim); font-weight: 500; }
     .sidebar label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 0 4px; margin-top: 4px; }
@@ -126,23 +133,57 @@
     .bar-rota-mid    { background: var(--blue); }
     .bar-rota-bot    { background: var(--blue); }
     .bar-rota-sup    { background: var(--blue); }
+
+    /* ── CAMPEÕES ── */
+    .clicavel { cursor: pointer; }
+    .stat-mini { padding: 12px; text-align: center; }
+    .stat-mini-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 6px; }
+    .stat-mini-val { font-family: 'Rajdhani', sans-serif; font-size: 22px; font-weight: 700; color: var(--text-hi); }
+    .txt-green { color: var(--green); } .txt-blue { color: var(--blue); } .txt-red { color: var(--red); } .txt-gold { color: var(--gold); }
+    .side-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; }
+    .side-block { padding: 14px; }
+    .duplas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
   </style>
 </head>
 <body>
 
+<div class="mode-switch">
+  <div class="mode-btn ativo" data-modo="time"     onclick="mudarModo('time')">Análise de Time</div>
+  <div class="mode-btn"       data-modo="campeoes" onclick="mudarModo('campeoes')">Campeões</div>
+</div>
+
 <div class="layout">
   <aside class="sidebar">
     <div class="sidebar-logo">Draft<span>Lab</span></div>
-    <label>Buscar time</label>
-    <input id="buscaTime" placeholder="Nome do time..." oninput="filtrarTimes()">
     <label>Temporada</label>
     <select id="anoSelect">
       <option value="">Todas</option>
       <option value="2025">2025</option>
       <option value="2026" selected>2026</option>
     </select>
-    <label style="margin-top:10px">Times</label>
-    <div class="times-lista" id="listaTimesEl"></div>
+
+    <!-- MODO: análise de um time -->
+    <div id="sidebar-time" class="sidebar-modo">
+      <label>Buscar time</label>
+      <input id="buscaTime" placeholder="Nome do time..." oninput="filtrarTimes()">
+      <label style="margin-top:10px">Times</label>
+      <div class="times-lista" id="listaTimesEl"></div>
+    </div>
+
+    <!-- MODO: hub de campeões -->
+    <div id="sidebar-campeoes" class="sidebar-modo" style="display:none">
+      <label>Buscar campeão</label>
+      <input id="buscaCampeao" placeholder="Nome do campeão..." oninput="filtrarCampeoesLista()">
+      <label style="margin-top:10px">Posição</label>
+      <select id="posicaoSelect" onchange="carregarListaCampeoes()">
+        <option value="">Todas</option>
+        <option value="top">Top</option>
+        <option value="jng">Jungle</option>
+        <option value="mid">Mid</option>
+        <option value="bot">Bot</option>
+        <option value="sup">Support</option>
+      </select>
+    </div>
   </aside>
 
   <div class="content" id="content">
@@ -154,6 +195,8 @@
 const API = 'http://localhost:5000';
 let todosOsTimes = [];
 let timeSelecionado = '';
+let modoAtivo = 'time';
+let todosOsCampeoesLista = [];
 
 const ROTA_LABEL = { top:'Top', jng:'Jungle', mid:'Mid', bot:'Bot', sup:'Support' };
 const ROTA_ORDER = ['top','jng','mid','bot','sup'];
@@ -166,6 +209,23 @@ async function init() {
   } catch(e) {
     document.getElementById('listaTimesEl').innerHTML =
       '<div style="color:var(--red);padding:8px;font-size:11px">Erro ao conectar (porta 5000)</div>';
+  }
+}
+
+// ── Troca de modo (Análise de Time / Campeões) ─────────────
+function mudarModo(modo) {
+  modoAtivo = modo;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('ativo', b.dataset.modo === modo));
+  document.querySelectorAll('.sidebar-modo').forEach(s => s.style.display = 'none');
+  document.getElementById('sidebar-' + modo).style.display = 'flex';
+
+  const c = document.getElementById('content');
+
+  if (modo === 'time') {
+    if (timeSelecionado) carregarTime(timeSelecionado);
+    else c.innerHTML = '<div class="empty">← Selecione um time</div>';
+  } else if (modo === 'campeoes') {
+    carregarListaCampeoes();
   }
 }
 
@@ -401,9 +461,219 @@ function vazio() {
   return '<div style="padding:14px;color:var(--text-dim);font-size:12px">Sem dados</div>';
 }
 
+// ═══════════════════════════════════════════════════════════
+// CAMPEÕES — Lista (Champion Intelligence) + Hub do campeão
+// ═══════════════════════════════════════════════════════════
+async function carregarListaCampeoes() {
+  const ano = document.getElementById('anoSelect').value;
+  const pos = document.getElementById('posicaoSelect').value;
+  const c = document.getElementById('content');
+  c.innerHTML = '<div class="loading">Carregando...</div>';
+
+  const url = `${API}/stats/campeoes?ligas=CBLOL${ano ? '&year=' + ano : ''}${pos ? '&posicao=' + pos : ''}`;
+
+  try {
+    const lista = await fetch(url).then(r => r.json());
+    if (lista.detail) throw new Error(lista.detail);
+    todosOsCampeoesLista = lista;
+    renderListaCampeoes(lista);
+  } catch(e) {
+    c.innerHTML = `<div class="empty" style="color:var(--red)">Erro: ${e.message}</div>`;
+  }
+}
+
+function filtrarCampeoesLista() {
+  const b = document.getElementById('buscaCampeao').value.toLowerCase();
+  renderListaCampeoes((todosOsCampeoesLista || []).filter(c => c.champion.toLowerCase().includes(b)));
+}
+
+function renderListaCampeoes(lista) {
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Champion Intelligence</div>
+        <div class="page-sub">${lista.length} campeões</div>
+      </div>
+    </div>
+    <div class="card">
+      ${lista.length ? `<table>
+        <thead><tr>
+          <th>Campeão</th><th>Posição</th><th>Win Rate</th><th>Jogos</th><th>Pick Rate</th><th>Bans</th><th>Ban Rate</th><th>Presença</th><th>FP WR</th><th>LP WR</th>
+        </tr></thead>
+        <tbody>
+          ${lista.map(camp => {
+            const wr = camp.win_rate ?? 0;
+            const wrC = wr >= 55 ? 'wr-hi' : wr >= 48 ? 'wr-mid' : 'wr-lo';
+            const nomeEsc = camp.champion.replace(/'/g, "\\'");
+            return `<tr class="clicavel" onclick="abrirCampeao('${nomeEsc}')">
+              <td>${camp.champion}</td>
+              <td class="val-dim">${(camp.posicao || '').toUpperCase()}</td>
+              <td><span class="wr-badge ${wrC}">${wr}%</span></td>
+              <td class="val-dim">${camp.jogos}</td>
+              <td class="val-dim">${camp.pick_rate}%</td>
+              <td class="val-dim">${camp.bans}</td>
+              <td class="val-dim">${camp.ban_rate}%</td>
+              <td class="val-dim">${camp.presence}%</td>
+              <td class="val-dim">${camp.fp_wr}%</td>
+              <td class="val-dim">${camp.lp_wr}%</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>` : vazio()}
+    </div>
+  `;
+}
+
+async function abrirCampeao(nome) {
+  const ano = document.getElementById('anoSelect').value;
+  const c = document.getElementById('content');
+  c.innerHTML = '<div class="loading">Carregando...</div>';
+
+  const url = `${API}/stats/campeao?campeao=${encodeURIComponent(nome)}&ligas=CBLOL${ano ? '&year=' + ano : ''}`;
+
+  try {
+    const d = await fetch(url).then(r => r.json());
+    if (d.detail) throw new Error(d.detail);
+    renderCampeaoHub(d);
+  } catch(e) {
+    c.innerHTML = `<div class="empty" style="color:var(--red)">Erro: ${e.message}</div>`;
+  }
+}
+
+function renderCampeaoHub(d) {
+  const c = document.getElementById('content');
+  const s = d.stats || {};
+
+  const statCard = (label, val, cls) => `
+    <div class="card stat-mini">
+      <div class="stat-mini-label">${label}</div>
+      <div class="stat-mini-val ${cls || ''}">${val}</div>
+    </div>`;
+
+  const fpWr = s.fp_wr ?? 0;
+  const lpWr = s.lp_wr ?? 0;
+
+  c.innerHTML = `
+    <div class="page-header">
+      <div>
+        <div class="page-title">${d.campeao}</div>
+        <div class="page-sub">${d.total_jogos} jogos na base${(d.rotas_campeao||[]).length ? ' · Joga: ' + d.rotas_campeao.map(r => ROTA_LABEL[r] || r).join(', ') : ''}</div>
+      </div>
+      <div class="pills">
+        <div class="pill clicavel" onclick="renderListaCampeoes(todosOsCampeoesLista)">← Voltar à lista</div>
+      </div>
+    </div>
+
+    <div class="grid-5">
+      ${statCard('Win Rate', (s.win_rate ?? 0) + '%', 'txt-green')}
+      ${statCard('Pick Rate', (s.pick_rate ?? 0) + '%', 'txt-blue')}
+      ${statCard('Ban Rate', (s.ban_rate ?? 0) + '%', 'txt-red')}
+      ${statCard('Presença', (s.presence ?? 0) + '%', 'txt-gold')}
+      ${statCard('Jogos', s.jogos ?? 0, '')}
+    </div>
+
+    <div class="card">
+      <div class="card-header teal"><span class="dot"></span>First Pick × Last Pick</div>
+      <div class="side-block">
+        <div class="side-row"><span style="color:var(--gold)">First Pick</span><span class="val-dim">${s.fp_jogos ?? 0} jogos</span></div>
+        <div class="bar-wrap" style="height:6px;margin:4px 0"><div class="bar-fill bar-gold" style="width:${fpWr}%;height:6px"></div></div>
+        <div style="color:var(--green);font-weight:600;margin-bottom:14px">${fpWr}% Win Rate</div>
+
+        <div class="side-row"><span style="color:var(--purple)">Last Pick</span><span class="val-dim">${s.lp_jogos ?? 0} jogos</span></div>
+        <div class="bar-wrap" style="height:6px;margin:4px 0"><div class="bar-fill bar-purple" style="width:${lpWr}%;height:6px"></div></div>
+        <div style="color:var(--green);font-weight:600">${lpWr}% Win Rate</div>
+      </div>
+    </div>
+
+    <div class="secao-label">Duplas Mais Comuns Por Rota</div>
+    ${renderDuplas(d.duplas)}
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header verde"><span class="dot"></span>Melhores Matchups (Forte Contra)</div>
+        ${tabelaMatchup(d.forte_contra)}
+      </div>
+      <div class="card">
+        <div class="card-header vermelho"><span class="dot"></span>Piores Matchups (Fraco Contra)</div>
+        ${tabelaMatchup(d.fraco_contra)}
+      </div>
+    </div>
+
+    <div class="secao-label">Top Jogadores</div>
+    <div class="card">
+      ${tabelaTopPlayers(d.top_players)}
+    </div>
+  `;
+}
+
+function renderDuplas(duplas) {
+  if (!duplas) return vazio();
+
+  const rotasComDados = ROTA_ORDER.filter(r => (duplas[r] || []).length);
+  if (!rotasComDados.length) {
+    return `<div class="card">${vazio()}</div>`;
+  }
+
+  const cards = rotasComDados.map(r => {
+    const linhas = duplas[r].map((dup, i) => `
+      <tr>
+        <td class="val-dim">${i + 1}</td>
+        <td>${dup.champion}</td>
+        <td class="val-dim">${dup.jogos}</td>
+        <td class="val-dim">${dup.frequencia}%</td>
+      </tr>`).join('');
+
+    return `
+      <div class="card">
+        <div class="card-header azul"><span class="dot"></span>${ROTA_LABEL[r]}</div>
+        <table>
+          <thead><tr><th>#</th><th>Campeão</th><th>Jogos</th><th>Freq.</th></tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  return `<div class="duplas-grid">${cards}</div>`;
+}
+
+function tabelaTopPlayers(lista) {
+  if (!lista?.length) return vazio();
+  return `<table>
+    <thead><tr><th>#</th><th>Jogador</th><th>Time</th><th>Jogos</th><th>Win Rate</th></tr></thead>
+    <tbody>${lista.map((p, i) => {
+      const wrC = p.win_rate >= 55 ? 'wr-hi' : p.win_rate >= 45 ? 'wr-mid' : 'wr-lo';
+      return `<tr>
+        <td class="val-dim">${i + 1}</td>
+        <td>${p.player}</td>
+        <td class="val-dim">${p.time}</td>
+        <td class="val-dim">${p.partidas}</td>
+        <td><span class="wr-badge ${wrC}">${p.win_rate}%</span></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+function tabelaMatchup(lista) {
+  if (!lista?.length) return vazio();
+  return `<table>
+    <thead><tr><th>Campeão</th><th>Win Rate</th><th>Jogos</th><th>Resposta</th></tr></thead>
+    <tbody>${lista.map(m => {
+      const wrC = m.win_rate >= 55 ? 'wr-hi' : m.win_rate >= 45 ? 'wr-mid' : 'wr-lo';
+      return `<tr>
+        <td>${m.champion}</td>
+        <td><span class="wr-badge ${wrC}">${m.win_rate}%</span></td>
+        <td class="val-dim">${m.jogos}</td>
+        <td class="val-dim">${m.resposta_rate}%</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('anoSelect').addEventListener('change', () => {
-    if (timeSelecionado) carregarTime(timeSelecionado);
+    if (modoAtivo === 'time' && timeSelecionado) carregarTime(timeSelecionado);
+    else if (modoAtivo === 'campeoes') carregarListaCampeoes();
   });
 });
 
