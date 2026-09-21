@@ -3,16 +3,53 @@
 
 # %%
 import pandas as pd
+import joblib
+import os
 
-tabela_2025 = pd.read_csv("2025_LoL_esports_match_data_from_OraclesElixir.csv")
-tabela_2026 = pd.read_csv("2026_LoL_esports_match_data_from_OraclesElixir.csv")
+try:
+    pasta_raiz = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    pasta_raiz = os.getcwd()
 
-tabela_2025["year"] = 2025
-tabela_2026["year"] = 2026
+pasta_csv = os.path.join(pasta_raiz, "csv")
+pasta_cache = os.path.join(pasta_raiz, "cache_dados")
 
-tabela = pd.concat([tabela_2025, tabela_2026], ignore_index = True)
+os.makedirs(pasta_cache, exist_ok = True)
 
-#display(tabela)
+datasets = {
+    2025 : "2025_LoL_esports_match_data_from_OraclesElixir.csv",
+    2026 : "2026_LoL_esports_match_data_from_OraclesElixir.csv"
+}
+
+def carregar_datasets(ano, nome):
+
+    caminho_csv = os.path.join(pasta_csv, nome)
+    caminho_cache = os.path.join(pasta_cache, f"tabela_{nome}.joblib")
+
+    cache_valido = os.path.exists(caminho_cache) and os.path.getmtime(caminho_cache) >= os.path.getmtime(caminho_csv)
+
+    if cache_valido:
+        return joblib.load(caminho_cache)
+
+    print(f"[Cache] Csv de {ano} é novo ou mudou -> \033[32mReprocessando\033[m")
+
+    df_dados = pd.read_csv(caminho_csv)
+    df_dados["year"] = ano
+
+    joblib.dump(df_dados, caminho_cache)
+
+    return df_dados
+
+
+tabelas = []
+
+for ano, arquivo in datasets.items():
+
+    df_arq = carregar_datasets(ano, arquivo)
+
+    tabelas.append(df_arq)
+
+tabela = pd.concat(tabelas, ignore_index = True)
 
 # %%
 novos_nomes = {
@@ -22,16 +59,15 @@ novos_nomes = {
 
 tabela["league_unificada"] = tabela["league"].replace(novos_nomes)
 
-print("Times 2025")
-print(tabela['league'].unique())
+print("Ligas")
 
-print()
+print(tabela['league'].unique(), "\n")
 print(tabela.columns.tolist())
-print()
 
-print("Times 2026\n")
-print(tabela_2026["league"].unique())
+# print("Times 2026\n")
+# print(tabela_2026["league"].unique())
 
+#display(tabela)
 
 # %%
 def obter_times_liga(lista_liga = "CBLOL", year = None):
@@ -751,14 +787,6 @@ y = tabela_ia["champion_num"]
 # print(f"IA treinada com sucesso! Liga ativa {liga_ativa} | Linhas de treino: {len(tabela_ia)}")
 
 # %%
-import os
-import joblib
-
-try:
-    pasta_raiz = os.path.dirname(os.path.abspath(__file__))
-except NameError:
-    pasta_raiz = os.getcwd()
-
 caminho_encoders = os.path.join(pasta_raiz, "modelos_treinados", "encoders.joblib")
 
 if os.path.exists(caminho_encoders):
@@ -1239,17 +1267,21 @@ def scout_campeao(champ_alvo, tabela = tabela_final, min_jogos = 50):
         if pos in rotas_campeao:
             continue
 
-        contagem_campeoes = df_duplas[df_duplas["position"] == pos]["champion"].value_counts().head(5)
+        contagem_campeoes = df_duplas[df_duplas["position"] == pos]["champion"].value_counts().head(10)
+        df_rota = df_duplas[df_duplas["position"] == pos]
 
         lista_rota = []
 
         for camp, qtd in contagem_campeoes.items():
             frequencia_pct = round((qtd / total_jogos) * 100, 1)
+            vitorias_dupla = df_rota[df_rota["champion"] == camp]["result"].sum()
+            win_rate_dupla = round((vitorias_dupla / qtd) * 100, 1)
 
             lista_rota.append({
                 "champion" : camp,
                 "jogos" : int(qtd),
-                "frequencia": frequencia_pct
+                "frequencia": frequencia_pct,
+                "win_rate" : win_rate_dupla
             })
 
         duplas_por_rota[pos] = lista_rota
@@ -1380,7 +1412,38 @@ def top_player_camp(camp_ref, tabela = tabela_final):
     stats.index.name = "player"
 
     return stats.reset_index()[["player", "time", "partidas", "win_rate"]].to_dict(orient = "records")
-    
+
+
+def avaliar_confrontos(aliados, inimigos):
+
+    matchups = []
+
+    for inimigo in inimigos:
+
+        confrontos = []
+
+        for aliado in aliados:
+
+            jogos = matchup_total.get((aliado, inimigo), 0)
+            vitorias = matchup_vitorias.get((aliado, inimigo), 0)
+            win_rate = round((vitorias / jogos) * 100, 1) if jogos > 0 else None
+
+            confrontos.append({
+                "aliado" : aliado,
+                "jogos" : jogos,
+                "vitorias" : vitorias,
+                "derrotas" : (jogos - vitorias),
+                "win_rate" : win_rate
+            })
+
+        matchups.append({"inimigo" : inimigo, "confrontos" : confrontos})
+
+    return {
+        "aliados" : aliados,
+        "inimigos" : inimigos,
+        "matchups" : matchups
+    }
+
 
 # %%
 import modelos_cache
@@ -1439,6 +1502,31 @@ def get_posicoes_ocupadas(lista_picks, dna_campeoes):
     return list(rotas_ocupadas.keys())    
 
 
+def cod_camp_seguro(campeoes):
+
+    num_champs = []
+
+    for camp in campeoes:
+        if camp in cod_camp.classes_:
+            num_champs.append(int(cod_camp.transform([camp])[0]))
+
+        else:
+            print(f"\033[33m[Aviso] Campeão {camp} fora dos campeões conhecidos pela IA\033[m. Tratado como neutro.")
+            num_champs.append(-1)
+
+    return num_champs
+
+
+def cod_time_seguro(nome_time):
+
+    if nome_time in cod_time.classes_:
+        return int(cod_time.transform([nome_time])[0])
+    else:
+        print(f'\033[33m[Aviso] Time {nome_time} fora das equipes conhecidas pela IA\033[m. Tratado como "Desconhecidos"')
+
+        return int(cod_time.transform(["Desconhecidos"])[0])
+
+
 def preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo):
 
     bans_time1 = list(bansTime1)
@@ -1466,7 +1554,7 @@ def preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo):
             ordem_banimentos.append(bans_fp[i])
 
     if len(ordem_banimentos) > 0:
-        num_bans = cod_camp.transform(ordem_banimentos).tolist()
+        num_bans = cod_camp_seguro(ordem_banimentos)
     else:
         num_bans = []
 
@@ -1557,16 +1645,24 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
     todos_camps_time = set(pool_do_time["champion"].unique())
 
     e_primeiro_pick_time = len(picksTime1) == 0
-    id_time = cod_time.transform([time1])[0]
-    id_opp = cod_time.transform([time2])[0]
+    # id_time = cod_time.transform([time1])[0]
+    # id_opp = cod_time.transform([time2])[0]
+
+    id_time = cod_time_seguro(time1)
+    id_opp = cod_time_seguro(time2)
+
     valor_posse_p1 = 1.0 if time_tem_p1_no_jogo else 0.0
 
-    picks_time1_nums = cod_camp.transform(picksTime1).tolist() if len(picksTime1) > 0 else []
+    # picks_time1_nums = cod_camp.transform(picksTime1).tolist() if len(picksTime1) > 0 else []
+
+    picks_time1_nums = cod_camp_seguro(picksTime1)
 
     while len(picks_time1_nums) < 4:
         picks_time1_nums.append(-1)
     
-    picks_time2_nums = cod_camp.transform(picksTime2).tolist() if len(picksTime2) > 0 else []
+    # picks_time2_nums = cod_camp.transform(picksTime2).tolist() if len(picksTime2) > 0 else []
+
+    picks_time2_nums = cod_camp_seguro(picksTime2)
 
     while len(picks_time2_nums) < 5:
         picks_time2_nums.append(-1)
@@ -1850,16 +1946,24 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
     if not rotas_vagas_adv:
         return df_meta[~df_meta.index.isin(proibidos)].sort_values(by = "ban_rate", ascending = False).index[0]
 
-    id_inimigo = cod_time.transform([time2])[0]
-    id_aliado = cod_time.transform([time1])[0]
+    # id_inimigo = cod_time.transform([time2])[0]
+    # id_aliado = cod_time.transform([time1])[0]
+
+    id_inimigo = cod_time_seguro(time2)
+    id_aliado = cod_time_seguro(time1)
+
     posse_p1_adv = 0.0 if time_tem_p1_no_jogo else 1.0
 
-    picks_time2_nums = cod_camp.transform(picksTime2).tolist() if len(picksTime2) > 0 else []
+    # picks_time2_nums = cod_camp.transform(picksTime2).tolist() if len(picksTime2) > 0 else []
+
+    picks_time2_nums = cod_camp_seguro(picksTime2)
 
     while len(picks_time2_nums) < 4:
         picks_time2_nums.append(-1)
     
-    picks_time1_nums = cod_camp.transform(picksTime1).tolist() if len(picksTime1) > 0 else []
+    # picks_time1_nums = cod_camp.transform(picksTime1).tolist() if len(picksTime1) > 0 else []
+
+    picks_time1_nums = cod_camp_seguro(picksTime1)
 
     while len(picks_time1_nums) < 5:
         picks_time1_nums.append(-1)
@@ -2088,12 +2192,12 @@ times_liga_ativa = tabela_liga_ativa["teamname"].unique()
 print(times_liga_ativa)
 
 # %%
-time1 = "paiN Gaming"
-time2 = "Vivo Keyd Stars"
+time1 = "FURIA"
+time2 = "LØS"
 
 historico_fearless = []
 
-resultado_serie = ordemPicksBans(time1, time2, 3)
+resultado_serie = ordemPicksBans(time1, time2, 1)
 
 for i, jogo in enumerate(resultado_serie):
     pFP, bFP, pLP, bLP = jogo

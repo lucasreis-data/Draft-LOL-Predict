@@ -42,6 +42,19 @@
     .times-lista { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 1px; margin-top: 4px; }
     .times-lista::-webkit-scrollbar { width: 3px; }
     .times-lista::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .tabela-scroll {
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    .tabela-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .tabela-scroll::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 2px;
+    }
+
     .time-item { padding: 7px 9px; border-radius: 3px; cursor: pointer; font-size: 12px; color: var(--text-dim); transition: all .12s; border-left: 2px solid transparent; }
     .time-item:hover { background: var(--bg3); color: var(--text); }
     .time-item.ativo { background: var(--teal-glow); color: var(--teal); border-left-color: var(--teal); font-weight: 600; }
@@ -143,6 +156,19 @@
     .side-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; }
     .side-block { padding: 14px; }
     .duplas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+
+    /* ── LIGAS (multi-seleção) ── */
+    .ligas-lista { display: flex; flex-direction: column; gap: 3px; max-height: 160px; overflow-y: auto; margin-top: 4px; }
+    .liga-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); padding: 2px 4px; cursor: pointer; }
+    .liga-check input { width: auto; }
+
+    /* ── SANDBOX ── */
+    .btn-primary { margin-top: 12px; background: var(--teal); color: #00161a; border: none; padding: 8px 10px; border-radius: 4px; font-weight: 700; cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; font-family: 'Inter', sans-serif; }
+    .btn-primary:hover { opacity: .85; }
+    .chips-lista { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; min-height: 8px; }
+    .chip { display: flex; align-items: center; gap: 5px; background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 3px 4px 3px 8px; border-radius: 4px; font-size: 11px; }
+    .chip-x { cursor: pointer; color: var(--text-dim); font-weight: 700; padding: 0 3px; }
+    .chip-x:hover { color: var(--red); }
   </style>
 </head>
 <body>
@@ -150,6 +176,7 @@
 <div class="mode-switch">
   <div class="mode-btn ativo" data-modo="time"     onclick="mudarModo('time')">Análise de Time</div>
   <div class="mode-btn"       data-modo="campeoes" onclick="mudarModo('campeoes')">Campeões</div>
+  <div class="mode-btn"       data-modo="sandbox"  onclick="mudarModo('sandbox')">Sandbox</div>
 </div>
 
 <div class="layout">
@@ -183,7 +210,24 @@
         <option value="bot">Bot</option>
         <option value="sup">Support</option>
       </select>
+      <label style="margin-top:10px">Ligas</label>
+      <div class="ligas-lista" id="ligasLista"></div>
     </div>
+
+    <!-- MODO: sandbox multi-campeões -->
+    <div id="sidebar-sandbox" class="sidebar-modo" style="display:none">
+      <label>Aliados (1 a 5)</label>
+      <input id="inputAliado" list="campeoesDatalist" placeholder="Nome do campeão..." onkeydown="if(event.key==='Enter'){event.preventDefault();adicionarChip('aliado');}">
+      <div class="chips-lista" id="chipsAliados"></div>
+
+      <label style="margin-top:14px">Inimigos (1 a 5)</label>
+      <input id="inputInimigo" list="campeoesDatalist" placeholder="Nome do campeão..." onkeydown="if(event.key==='Enter'){event.preventDefault();adicionarChip('inimigo');}">
+      <div class="chips-lista" id="chipsInimigos"></div>
+
+      <button class="btn-primary" onclick="buscarConfrontos()">Buscar</button>
+    </div>
+
+    <datalist id="campeoesDatalist"></datalist>
   </aside>
 
   <div class="content" id="content">
@@ -197,9 +241,19 @@ let todosOsTimes = [];
 let timeSelecionado = '';
 let modoAtivo = 'time';
 let todosOsCampeoesLista = [];
+let ligasSelecionadas = ['CBLOL'];
 
 const ROTA_LABEL = { top:'Top', jng:'Jungle', mid:'Mid', bot:'Bot', sup:'Support' };
 const ROTA_ORDER = ['top','jng','mid','bot','sup'];
+
+// Regra de cor única pro site inteiro: exatamente 50% = amarelo,
+// qualquer coisa acima (mesmo 50.1%) = verde, abaixo = vermelho.
+function corWR(wr) {
+  if (wr === null || wr === undefined) return 'wr-mid';
+  if (wr > 50) return 'wr-hi';
+  if (wr === 50) return 'wr-mid';
+  return 'wr-lo';
+}
 
 async function init() {
   try {
@@ -210,9 +264,45 @@ async function init() {
     document.getElementById('listaTimesEl').innerHTML =
       '<div style="color:var(--red);padding:8px;font-size:11px">Erro ao conectar (porta 5000)</div>';
   }
+
+  try {
+    const rl = await fetch(`${API}/ligas/disponiveis`);
+    const { ligas } = await rl.json();
+    renderLigasLista(ligas);
+  } catch(e) { /* segue com CBLOL default se não conseguir carregar */ }
+
+  try {
+    const rc = await fetch(`${API}/campeoes`);
+    const nomes = await rc.json();
+    document.getElementById('campeoesDatalist').innerHTML =
+      nomes.map(n => `<option value="${n}">`).join('');
+  } catch(e) { /* datalist é só bônus de autocomplete */ }
 }
 
-// ── Troca de modo (Análise de Time / Campeões) ─────────────
+function renderLigasLista(ligas) {
+  const el = document.getElementById('ligasLista');
+  el.innerHTML = ligas.map(l => `
+    <label class="liga-check">
+      <input type="checkbox" value="${l}" ${ligasSelecionadas.includes(l) ? 'checked' : ''} onchange="alternarLiga('${l}', this.checked)">
+      ${l}
+    </label>
+  `).join('');
+}
+
+function alternarLiga(liga, marcado) {
+  if (marcado && !ligasSelecionadas.includes(liga)) ligasSelecionadas.push(liga);
+  else if (!marcado) ligasSelecionadas = ligasSelecionadas.filter(l => l !== liga);
+
+  if (ligasSelecionadas.length === 0) ligasSelecionadas = [liga]; // não deixa ficar sem nenhuma
+
+  carregarListaCampeoes();
+}
+
+function queryLigas() {
+  return ligasSelecionadas.map(l => `ligas=${encodeURIComponent(l)}`).join('&');
+}
+
+// ── Troca de modo (Análise de Time / Campeões / Sandbox) ───
 function mudarModo(modo) {
   modoAtivo = modo;
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('ativo', b.dataset.modo === modo));
@@ -226,6 +316,8 @@ function mudarModo(modo) {
     else c.innerHTML = '<div class="empty">← Selecione um time</div>';
   } else if (modo === 'campeoes') {
     carregarListaCampeoes();
+  } else if (modo === 'sandbox') {
+    c.innerHTML = '<div class="empty">← Adicione de 1 a 5 aliados e de 1 a 5 inimigos e clique em Buscar</div>';
   }
 }
 
@@ -470,7 +562,7 @@ async function carregarListaCampeoes() {
   const c = document.getElementById('content');
   c.innerHTML = '<div class="loading">Carregando...</div>';
 
-  const url = `${API}/stats/campeoes?ligas=CBLOL${ano ? '&year=' + ano : ''}${pos ? '&posicao=' + pos : ''}`;
+  const url = `${API}/stats/campeoes?${queryLigas()}${ano ? '&year=' + ano : ''}${pos ? '&posicao=' + pos : ''}`;
 
   try {
     const lista = await fetch(url).then(r => r.json());
@@ -504,7 +596,7 @@ function renderListaCampeoes(lista) {
         <tbody>
           ${lista.map(camp => {
             const wr = camp.win_rate ?? 0;
-            const wrC = wr >= 55 ? 'wr-hi' : wr >= 48 ? 'wr-mid' : 'wr-lo';
+            const wrC = corWR(wr);
             const nomeEsc = camp.champion.replace(/'/g, "\\'");
             return `<tr class="clicavel" onclick="abrirCampeao('${nomeEsc}')">
               <td>${camp.champion}</td>
@@ -530,7 +622,7 @@ async function abrirCampeao(nome) {
   const c = document.getElementById('content');
   c.innerHTML = '<div class="loading">Carregando...</div>';
 
-  const url = `${API}/stats/campeao?campeao=${encodeURIComponent(nome)}&ligas=CBLOL${ano ? '&year=' + ano : ''}`;
+  const url = `${API}/stats/campeao?campeao=${encodeURIComponent(nome)}&${queryLigas()}${ano ? '&year=' + ano : ''}`;
 
   try {
     const d = await fetch(url).then(r => r.json());
@@ -622,13 +714,14 @@ function renderDuplas(duplas) {
         <td>${dup.champion}</td>
         <td class="val-dim">${dup.jogos}</td>
         <td class="val-dim">${dup.frequencia}%</td>
+        <td><span class="wr-badge ${corWR(dup.win_rate)}">${dup.win_rate}%</span></td>
       </tr>`).join('');
 
     return `
       <div class="card">
         <div class="card-header azul"><span class="dot"></span>${ROTA_LABEL[r]}</div>
         <table>
-          <thead><tr><th>#</th><th>Campeão</th><th>Jogos</th><th>Freq.</th></tr></thead>
+          <thead><tr><th>#</th><th>Campeão</th><th>Jogos</th><th>Freq.</th><th>Win Rate</th></tr></thead>
           <tbody>${linhas}</tbody>
         </table>
       </div>`;
@@ -642,7 +735,7 @@ function tabelaTopPlayers(lista) {
   return `<table>
     <thead><tr><th>#</th><th>Jogador</th><th>Time</th><th>Jogos</th><th>Win Rate</th></tr></thead>
     <tbody>${lista.map((p, i) => {
-      const wrC = p.win_rate >= 55 ? 'wr-hi' : p.win_rate >= 45 ? 'wr-mid' : 'wr-lo';
+      const wrC = corWR(p.win_rate);
       return `<tr>
         <td class="val-dim">${i + 1}</td>
         <td>${p.player}</td>
@@ -656,10 +749,10 @@ function tabelaTopPlayers(lista) {
 
 function tabelaMatchup(lista) {
   if (!lista?.length) return vazio();
-  return `<table>
+  return `<div class="tabela-scroll"><table>
     <thead><tr><th>Campeão</th><th>Win Rate</th><th>Jogos</th><th>Resposta</th></tr></thead>
     <tbody>${lista.map(m => {
-      const wrC = m.win_rate >= 55 ? 'wr-hi' : m.win_rate >= 45 ? 'wr-mid' : 'wr-lo';
+      const wrC = corWR(m.win_rate);
       return `<tr>
         <td>${m.champion}</td>
         <td><span class="wr-badge ${wrC}">${m.win_rate}%</span></td>
@@ -667,7 +760,7 @@ function tabelaMatchup(lista) {
         <td class="val-dim">${m.resposta_rate}%</td>
       </tr>`;
     }).join('')}</tbody>
-  </table>`;
+  </table></div>`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -676,6 +769,107 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (modoAtivo === 'campeoes') carregarListaCampeoes();
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// SANDBOX — matchup direto campeão x campeão (aliados x inimigos)
+// ═══════════════════════════════════════════════════════════
+let chipsAliados = [];
+let chipsInimigos = [];
+
+function adicionarChip(lado) {
+  const inputEl = document.getElementById(lado === 'aliado' ? 'inputAliado' : 'inputInimigo');
+  const nome = inputEl.value.trim();
+  if (!nome) return;
+
+  const lista = lado === 'aliado' ? chipsAliados : chipsInimigos;
+
+  if (lista.length >= 5) return;
+  if (lista.some(c => c.toLowerCase() === nome.toLowerCase())) {
+    inputEl.value = '';
+    return;
+  }
+
+  lista.push(nome);
+  inputEl.value = '';
+  renderChips(lado);
+}
+
+function removerChip(lado, nome) {
+  if (lado === 'aliado') chipsAliados = chipsAliados.filter(c => c !== nome);
+  else chipsInimigos = chipsInimigos.filter(c => c !== nome);
+  renderChips(lado);
+}
+
+function renderChips(lado) {
+  const lista = lado === 'aliado' ? chipsAliados : chipsInimigos;
+  const el = document.getElementById(lado === 'aliado' ? 'chipsAliados' : 'chipsInimigos');
+  el.innerHTML = lista.map(nome => `
+    <span class="chip">${nome}<span class="chip-x" onclick="removerChip('${lado}','${nome.replace(/'/g, "\\'")}')">×</span></span>
+  `).join('');
+}
+
+async function buscarConfrontos() {
+  const c = document.getElementById('content');
+
+  if (chipsAliados.length < 1 || chipsInimigos.length < 1) {
+    c.innerHTML = '<div class="empty" style="color:var(--red)">Adicione pelo menos 1 aliado e 1 inimigo</div>';
+    return;
+  }
+
+  c.innerHTML = '<div class="loading">Carregando...</div>';
+
+  const params = new URLSearchParams();
+  chipsAliados.forEach(a => params.append('aliados', a));
+  chipsInimigos.forEach(i => params.append('inimigos', i));
+
+  try {
+    const d = await fetch(`${API}/stats/matchups-confronto?${params.toString()}`).then(r => r.json());
+    if (d.detail) throw new Error(d.detail);
+    renderConfrontos(d);
+  } catch(e) {
+    c.innerHTML = `<div class="empty" style="color:var(--red)">Erro: ${e.message}</div>`;
+  }
+}
+
+function renderConfrontos(d) {
+  const c = document.getElementById('content');
+
+  const blocos = d.matchups.map(linha => {
+    const linhas = linha.confrontos.map(cf => {
+      if (cf.win_rate === null) {
+        return `<tr>
+          <td>${cf.aliado}</td>
+          <td class="val-dim" colspan="3">Sem dados desse confronto na base</td>
+        </tr>`;
+      }
+      return `<tr>
+        <td>${cf.aliado}</td>
+        <td class="val-dim">${cf.jogos}</td>
+        <td class="val-dim">${cf.vitorias}V / ${cf.derrotas}D</td>
+        <td><span class="wr-badge ${corWR(cf.win_rate)}">${cf.win_rate}%</span></td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <div class="card">
+        <div class="card-header vermelho"><span class="dot"></span>Contra ${linha.inimigo}</div>
+        <table>
+          <thead><tr><th>Aliado</th><th>Jogos</th><th>V/D</th><th>Win Rate</th></tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  c.innerHTML = `
+    <div class="page-header">
+      <div>
+        <div class="page-title">${d.aliados.join(' + ')} vs ${d.inimigos.join(' + ')}</div>
+        <div class="page-sub">Win rate de cada aliado contra cada inimigo, confronto direto (matchup_total/matchup_vitorias)</div>
+      </div>
+    </div>
+    <div class="duplas-grid">${blocos}</div>
+  `;
+}
 
 init();
 </script>

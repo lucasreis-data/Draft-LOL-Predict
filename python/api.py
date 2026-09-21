@@ -75,6 +75,14 @@ def bans_analise(nome: str = Query(...), ano: int = Query(None)):
     return resultado
 
 
+@app.get("/stats/matchups-confronto")
+def matchups_confronto(
+    aliados : list[str] = Query(...),
+    inimigos : list[str] = Query(...),
+):
+    return cblol.avaliar_confrontos(aliados, inimigos)
+
+
 @app.get("/acessar-sessao")
 def acessar_jogo(sessionId: str = Query(...)):
     state = sessions[sessionId]

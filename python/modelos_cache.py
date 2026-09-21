@@ -3,7 +3,7 @@ import joblib
 
 pasta_modelos = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos_treinados")
 
-ligas_treinadas = {"CBLOL", "LCK", "LPL", "LEC", "GERAL"}
+ligas_treinadas = {"CBLOL", "LCK", "LPL", "LEC", "LCS", "LCP", "GERAL"}
 
 _cache_modelos = {}
 
