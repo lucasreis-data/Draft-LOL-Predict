@@ -67,12 +67,48 @@ def listar_campeoes():
 
 
 @app.get("/stats/draft")
-def bans_analise(nome: str = Query(...), ano: int = Query(None)):
-    resultado = cblol.analisar_estrategias(nome, ano)
+def bans_analise(
+    nome: str = Query(...), 
+    ano: int = Query(None),
+    split : list[str] = Query(None),
+    patch : list[str] = Query(None)
+    ):
+
+    resultado = cblol.analisar_estrategias(nome, ano, split, patch)
 
     if resultado is None:
         raise HTTPException(status_code = 404, detail = f"Time {nome} não encontrado")
     return resultado
+
+
+@app.get("/stats/filtros")
+def filtros_disponiveis(
+    ligas : list[str] = Query(None),
+    year : int = Query(None),
+    split : list[str] = Query(None)
+):
+    tabela_splits = cblol.filtar_dados(ligas, year)
+
+    if split:
+        tabela_patchs = cblol.filtar_dados(ligas, year, split)
+    else:
+        tabela_patchs = cblol.filtar_dados(ligas, year)
+
+    splits_unicos = sorted(tabela_splits["split"].dropna().unique().tolist())
+    patchs_unicos = sorted(tabela_patchs["patch_num"].dropna().unique())
+
+    patchs_validos = []
+
+    for p in patchs_unicos:
+        if p > 0:
+            patchs_validos.append(int(p))
+
+    patchs_validos = sorted(patchs_validos, reverse = True)
+
+    return {
+        "splits" : splits_unicos,
+        "patches" : patchs_validos
+    }
 
 
 @app.get("/stats/matchups-confronto")
@@ -101,9 +137,11 @@ def acessar_jogo(sessionId: str = Query(...)):
 def lista_campeoes_stats(
     ligas : list[str] = Query(None),
     year : int = Query(None),
-    posicao : str = Query(None)
+    posicao : str = Query(None),
+    split : list[str] = Query(None),
+    patch : list[str] = Query(None)
 ):
-    tabela_liga = cblol.filtar_dados(ligas, year)
+    tabela_liga = cblol.filtar_dados(ligas, year, split, patch)
     
     return cblol.ranking_meta(tabela_liga, posicao)
 
@@ -112,9 +150,11 @@ def lista_campeoes_stats(
 def campeao_scout(
     campeao : str = Query(...),
     ligas : list[str] = Query(None),
-    year : int = Query(None)
+    year : int = Query(None),
+    split : list[str] = Query(None),
+    patch : list[str] = Query(None)
 ):
-    tabela_dados = cblol.filtar_dados(ligas, year)
+    tabela_dados = cblol.filtar_dados(ligas, year, split, patch)
     stats = cblol.estatistica_campeao(campeao, tabela_dados)
     scout = cblol.scout_campeao(campeao, tabela_dados)
 

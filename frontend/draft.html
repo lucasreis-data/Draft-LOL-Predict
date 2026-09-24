@@ -43,6 +43,9 @@
     .times-lista::-webkit-scrollbar { width: 3px; }
     .times-lista::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+    /* ── FILTROS GLOBAIS (Split / Patch) — aparecem em Time e Campeões ── */
+    .filtros-sp { display: flex; flex-direction: column; gap: 8px; }
+
     .tabela-scroll {
       max-height: 280px;
       overflow-y: auto;
@@ -55,9 +58,17 @@
       border-radius: 2px;
     }
 
+    th.th-sort { cursor: pointer; user-select: none; }
+    th.th-sort:hover { color: var(--teal); }
+    th.th-sort .seta-ordem { color: var(--teal); margin-left: 2px; }
+
     .time-item { padding: 7px 9px; border-radius: 3px; cursor: pointer; font-size: 12px; color: var(--text-dim); transition: all .12s; border-left: 2px solid transparent; }
     .time-item:hover { background: var(--bg3); color: var(--text); }
     .time-item.ativo { background: var(--teal-glow); color: var(--teal); border-left-color: var(--teal); font-weight: 600; }
+
+    /* ── Nome de campeão clicável (leva pra página do campeão) ── */
+    .link-camp { cursor: pointer; }
+    .link-camp:hover { color: var(--teal); text-decoration: underline; }
 
     .content { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; min-width: 0; }
     .empty { color: var(--text-dim); font-size: 15px; text-align: center; margin-top: 100px; font-family: 'Rajdhani', sans-serif; letter-spacing: 1px; }
@@ -189,9 +200,25 @@
       <option value="2026" selected>2026</option>
     </select>
 
+    <!-- NOVO: Split e Patch globais (Time e Campeões). Populados via atualizarFiltros() -->
+    <div id="filtrosSplitPatch" class="filtros-sp">
+      <label>Split</label>
+      <select id="splitSelect" onchange="onSplitChange()">
+        <option value="">Todos</option>
+      </select>
+      <label>Patch</label>
+      <select id="patchSelect" onchange="onPatchChange()">
+        <option value="">Todos</option>
+      </select>
+    </div>
+
     <!-- MODO: análise de um time -->
     <div id="sidebar-time" class="sidebar-modo">
-      <label>Buscar time</label>
+      <label>Liga</label>
+      <select id="ligaTimeSelect" onchange="mudarLigaTime(this.value)">
+        <option value="GERAL">Todas as Ligas</option>
+      </select>
+      <label style="margin-top:10px">Buscar time</label>
       <input id="buscaTime" placeholder="Nome do time..." oninput="filtrarTimes()">
       <label style="margin-top:10px">Times</label>
       <div class="times-lista" id="listaTimesEl"></div>
@@ -242,6 +269,8 @@ let timeSelecionado = '';
 let modoAtivo = 'time';
 let todosOsCampeoesLista = [];
 let ligasSelecionadas = ['CBLOL'];
+let ligaTimeSelecionada = 'GERAL';
+let campeaoAtual = null;
 
 const ROTA_LABEL = { top:'Top', jng:'Jungle', mid:'Mid', bot:'Bot', sup:'Support' };
 const ROTA_ORDER = ['top','jng','mid','bot','sup'];
@@ -255,9 +284,82 @@ function corWR(wr) {
   return 'wr-lo';
 }
 
+// ═══════════════════════════════════════════════════════════
+// TABELAS ORDENÁVEIS (setinhas) — helper único reaproveitado
+// em todas as tabelas do site
+// ═══════════════════════════════════════════════════════════
+const _tabelasReg = {};
+const _sortState = {};
+
+// colunas: [{ chave, label, sortable(true), numerica(false) }]
+// renderLinha(row) -> string "<tr>...</tr>"
+// ordemPadrao: { chave, dir } opcional, só na primeira vez que a tabela é criada
+function tabelaSortavel(id, colunas, dados, renderLinha, ordemPadrao) {
+  _tabelasReg[id] = { colunas, dados: dados || [], renderLinha };
+
+  if (!_sortState[id] && ordemPadrao) {
+    _sortState[id] = { chave: ordemPadrao.chave, dir: ordemPadrao.dir || 'desc' };
+  }
+
+  return `<div id="wrap-${id}">${desenharTabelaSortavel(id)}</div>`;
+}
+
+function desenharTabelaSortavel(id) {
+  const reg = _tabelasReg[id];
+  if (!reg) return '';
+  if (!reg.dados.length) return vazio();
+
+  const estado = _sortState[id];
+  let linhas = reg.dados.slice();
+
+  if (estado) {
+    linhas.sort((a, b) => {
+      let va = a[estado.chave];
+      let vb = b[estado.chave];
+
+      if (va === null || va === undefined) va = typeof vb === 'number' ? -Infinity : '';
+      if (vb === null || vb === undefined) vb = typeof va === 'number' ? -Infinity : '';
+
+      if (typeof va === 'string') va = va.toLowerCase();
+      if (typeof vb === 'string') vb = vb.toLowerCase();
+
+      let cmp = va > vb ? 1 : va < vb ? -1 : 0;
+      return estado.dir === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  const thead = reg.colunas.map(c => {
+    if (c.sortable === false) return `<th>${c.label}</th>`;
+    const ativo = estado && estado.chave === c.chave;
+    const seta = ativo ? `<span class="seta-ordem">${estado.dir === 'asc' ? '▲' : '▼'}</span>` : '';
+    return `<th class="th-sort" onclick="ordenarTabelaSortavel('${id}','${c.chave}')">${c.label} ${seta}</th>`;
+  }).join('');
+
+  const tbody = linhas.map(reg.renderLinha).join('');
+
+  return `<table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`;
+}
+
+function ordenarTabelaSortavel(id, chave) {
+  const atual = _sortState[id];
+
+  if (atual && atual.chave === chave) {
+    atual.dir = atual.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _sortState[id] = { chave, dir: 'desc' };
+  }
+
+  const el = document.getElementById('wrap-' + id);
+  if (el) el.innerHTML = desenharTabelaSortavel(id);
+}
+
 async function init() {
   try {
-    const r = await fetch(`${API}/times`);
+    await carregarLigasTime();
+  } catch(e) { /* segue com "Todas as Ligas" default se não conseguir carregar */ }
+
+  try {
+    const r = await fetch(`${API}/times?ligas=${encodeURIComponent(ligaTimeSelecionada)}`);
     todosOsTimes = await r.json();
     renderTimes(todosOsTimes);
   } catch(e) {
@@ -277,6 +379,48 @@ async function init() {
     document.getElementById('campeoesDatalist').innerHTML =
       nomes.map(n => `<option value="${n}">`).join('');
   } catch(e) { /* datalist é só bônus de autocomplete */ }
+
+  atualizarFiltros(); // NOVO: popula Split/Patch iniciais (modo time, todas as ligas, temporada padrão)
+}
+
+// ── Liga no modo Análise de Time (reaproveita /ligas/disponiveis) ───
+async function carregarLigasTime() {
+  const r = await fetch(`${API}/ligas/disponiveis`);
+  const { ligas } = await r.json();
+
+  const select = document.getElementById('ligaTimeSelect');
+  const opcoesExtras = (ligas || []).filter(l => l.toUpperCase() !== 'GERAL');
+
+  select.innerHTML =
+    `<option value="GERAL">Todas as Ligas</option>` +
+    opcoesExtras.map(l => `<option value="${l}">${l}</option>`).join('');
+
+  select.value = ligaTimeSelecionada;
+}
+
+async function mudarLigaTime(liga) {
+  ligaTimeSelecionada = liga || 'GERAL';
+
+  const listaEl = document.getElementById('listaTimesEl');
+  listaEl.innerHTML = '<div style="color:var(--text-dim);padding:8px;font-size:11px">Carregando times...</div>';
+
+  try {
+    const r = await fetch(`${API}/times?ligas=${encodeURIComponent(ligaTimeSelecionada)}`);
+    todosOsTimes = await r.json();
+
+    if (timeSelecionado && !todosOsTimes.includes(timeSelecionado)) {
+      timeSelecionado = '';
+      document.getElementById('content').innerHTML = '<div class="empty">← Selecione um time</div>';
+    }
+
+    filtrarTimes();
+  } catch(e) {
+    listaEl.innerHTML = '<div style="color:var(--red);padding:8px;font-size:11px">Erro ao carregar times</div>';
+  }
+
+  // NOVO: a liga mudou, então splits/patches disponíveis também mudam
+  await atualizarFiltros();
+  if (timeSelecionado) recarregarTela();
 }
 
 function renderLigasLista(ligas) {
@@ -295,27 +439,146 @@ function alternarLiga(liga, marcado) {
 
   if (ligasSelecionadas.length === 0) ligasSelecionadas = [liga]; // não deixa ficar sem nenhuma
 
-  carregarListaCampeoes();
+  atualizarFiltrosETela(); // ALTERADO: antes chamava direto abrirCampeao/carregarListaCampeoes
 }
 
+// "GERAL" não existe como valor de league_unificada no backend — é só um
+// atalho visual. Quando selecionado, expandimos pra união real das ligas
+// treinadas, sem precisar mexer no cblol.py/api.py.
+const LIGAS_GERAL = ['CBLOL', 'LCK', 'LCP', 'LCS', 'LEC', 'LPL'];
+
 function queryLigas() {
-  return ligasSelecionadas.map(l => `ligas=${encodeURIComponent(l)}`).join('&');
+  let ligas = ligasSelecionadas;
+
+  if (ligas.some(l => l.toUpperCase() === 'GERAL')) {
+    const extras = ligas.filter(l => l.toUpperCase() !== 'GERAL' && !LIGAS_GERAL.includes(l));
+    ligas = [...LIGAS_GERAL, ...extras];
+  }
+
+  return ligas.map(l => `ligas=${encodeURIComponent(l)}`).join('&');
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILTROS DE SPLIT / PATCH (Time e Campeões)
+// ═══════════════════════════════════════════════════════════
+
+// Monta "&split=...&patch=..." a partir dos selects. Vazio se estiver em "Todos".
+function queryFiltro() {
+  const split = document.getElementById('splitSelect')?.value;
+  const patch = document.getElementById('patchSelect')?.value;
+  let q = '';
+  if (split) q += `&split=${encodeURIComponent(split)}`;
+  if (patch) q += `&patch=${encodeURIComponent(patch)}`;
+  return q;
+}
+
+// Texto curto pra mostrar nos subtítulos, pra você saber qual recorte está vendo
+function labelFiltro() {
+  const split = document.getElementById('splitSelect')?.value;
+  const patchSel = document.getElementById('patchSelect');
+  let t = '';
+  if (split) t += ` · Split ${split}`;
+  if (patchSel?.value) t += ` · Patch ${(Number(patchSel.value) / 100).toFixed(2)}`;
+  return t;
+}
+
+// Recorte de ligas usado pra listar splits/patches: no modo time usa a liga
+// única do seletor (GERAL = sem filtro de liga); no modo campeões usa o
+// mesmo recorte multi-liga da tela.
+function queryLigasParaFiltros() {
+  if (modoAtivo === 'time') {
+    if (!ligaTimeSelecionada || ligaTimeSelecionada.toUpperCase() === 'GERAL') return '';
+    return `ligas=${encodeURIComponent(ligaTimeSelecionada)}`;
+  }
+  return queryLigas();
+}
+
+// Repopula os <select> de Split/Patch via /stats/filtros.
+// Split: sempre a lista completa do recorte (liga + ano).
+// Patch: só os patches do split escolhido (ou todos, se split = "Todos").
+async function atualizarFiltros() {
+  const ano = document.getElementById('anoSelect').value;
+  const splitSel = document.getElementById('splitSelect');
+  const patchSel = document.getElementById('patchSelect');
+  const splitAtual = splitSel.value;
+  const patchAtual = patchSel.value;
+
+  const partes = [
+    queryLigasParaFiltros(),
+    ano ? `year=${ano}` : '',
+    splitAtual ? `split=${encodeURIComponent(splitAtual)}` : ''
+  ].filter(Boolean).join('&');
+
+  try {
+    const r = await fetch(`${API}/stats/filtros${partes ? '?' + partes : ''}`);
+    if (!r.ok) throw new Error('filtros indisponíveis');
+    const { splits, patches } = await r.json();
+
+    splitSel.innerHTML = '<option value="">Todos</option>' +
+      splits.map(s => `<option value="${s}">${s}</option>`).join('');
+
+    if (splits.includes(splitAtual)) {
+      splitSel.value = splitAtual;
+    } else if (splitAtual) {
+      // O split escolhido não existe mais neste recorte (liga/ano mudou):
+      // volta pra "Todos" e refaz a busca, senão os patches viriam do split antigo.
+      return atualizarFiltros();
+    }
+
+    patchSel.innerHTML = '<option value="">Todos</option>' +
+      patches.map(p => `<option value="${p}">${(p / 100).toFixed(2)}</option>`).join('');
+    if (patches.map(String).includes(patchAtual)) patchSel.value = patchAtual;
+  } catch (e) {
+    // segue sem filtros de split/patch se o endpoint não existir/falhar
+  }
+}
+
+// Recarrega o que estiver na tela do modo atual (time ou campeões)
+function recarregarTela() {
+  if (modoAtivo === 'time') {
+    if (timeSelecionado) carregarTime(timeSelecionado);
+  } else if (modoAtivo === 'campeoes') {
+    if (campeaoAtual) abrirCampeao(campeaoAtual);
+    else carregarListaCampeoes();
+  }
+}
+
+// Filtros primeiro (pra não buscar dados com um split que não existe mais), tela depois
+async function atualizarFiltrosETela() {
+  await atualizarFiltros();
+  recarregarTela();
+}
+
+// Split mudou: os patches disponíveis mudam junto (patch antigo é descartado se não pertence ao novo split)
+async function onSplitChange() {
+  await atualizarFiltros();
+  recarregarTela();
+}
+
+// Só o patch mudou: nada pra recarregar nos selects
+function onPatchChange() {
+  recarregarTela();
 }
 
 // ── Troca de modo (Análise de Time / Campeões / Sandbox) ───
-function mudarModo(modo) {
+function mudarModo(modo, carregar = true) {
   modoAtivo = modo;
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('ativo', b.dataset.modo === modo));
   document.querySelectorAll('.sidebar-modo').forEach(s => s.style.display = 'none');
   document.getElementById('sidebar-' + modo).style.display = 'flex';
 
+  // Split/Patch: visível em Time e Campeões, escondido no Sandbox
+  document.getElementById('filtrosSplitPatch').style.display = modo === 'sandbox' ? 'none' : 'flex';
+
   const c = document.getElementById('content');
 
+  if (!carregar) return; // usado por irParaCampeao: só troca a aba, quem chamou carrega os dados
+
   if (modo === 'time') {
-    if (timeSelecionado) carregarTime(timeSelecionado);
-    else c.innerHTML = '<div class="empty">← Selecione um time</div>';
+    if (!timeSelecionado) c.innerHTML = '<div class="empty">← Selecione um time</div>';
+    atualizarFiltrosETela();
   } else if (modo === 'campeoes') {
-    carregarListaCampeoes();
+    atualizarFiltrosETela();
   } else if (modo === 'sandbox') {
     c.innerHTML = '<div class="empty">← Adicione de 1 a 5 aliados e de 1 a 5 inimigos e clique em Buscar</div>';
   }
@@ -340,7 +603,8 @@ async function carregarTime(nome) {
 
   const ano = document.getElementById('anoSelect').value;
   const enc = encodeURIComponent(nome);
-  const url = `${API}/stats/draft?nome=${enc}${ano ? '&ano='+ano : ''}`;
+  // ALTERADO: entrou ${queryFiltro()} no fim (split/patch)
+  const url = `${API}/stats/draft?nome=${enc}${ano ? '&ano='+ano : ''}${queryFiltro()}`;
 
   try {
     const d = await fetch(url).then(r => r.json());
@@ -359,7 +623,7 @@ function renderAnalise(d) {
     <div class="page-header">
       <div>
         <div class="page-title">${d.time}</div>
-        <div class="page-sub">${anoLabel}</div>
+        <div class="page-sub">${anoLabel}${labelFiltro()}</div>
       </div>
       <div class="pills">
         <div class="pill">Total <strong>${d.geral.jogos}</strong></div>
@@ -374,9 +638,9 @@ function renderAnalise(d) {
       <div class="tab"       onclick="trocarAba('lp',this)">Last Pick</div>
     </div>
 
-    <div id="aba-geral" class="tab-content ativo">${renderBloco(d.geral, d.picks_jogador)}</div>
-    <div id="aba-fp"    class="tab-content">${renderBloco(d.fp, null)}</div>
-    <div id="aba-lp"    class="tab-content">${renderBloco(d.lp, null)}</div>
+    <div id="aba-geral" class="tab-content ativo">${renderBloco(d.geral, d.picks_jogador, 'geral')}</div>
+    <div id="aba-fp"    class="tab-content">${renderBloco(d.fp, null, 'fp')}</div>
+    <div id="aba-lp"    class="tab-content">${renderBloco(d.lp, null, 'lp')}</div>
   `;
 }
 
@@ -387,17 +651,17 @@ function trocarAba(nome, el) {
   document.getElementById('aba-' + nome).classList.add('ativo');
 }
 
-function renderBloco(b, picksPorJogador) {
+function renderBloco(b, picksPorJogador, prefixo = 'geral') {
   return `
     <div class="secao-label">Picks</div>
     <div class="grid-2">
       <div class="card">
         <div class="card-header verde"><span class="dot"></span>Picks do Time</div>
-        ${tabelaPicks(b.picks, 'bar-green')}
+        ${tabelaPicks(b.picks, 'bar-green', `${prefixo}-picks`)}
       </div>
       <div class="card">
         <div class="card-header gold"><span class="dot"></span>Prioridade First Pick (P1)</div>
-        ${tabelaFP(b.prioridade_fp)}
+        ${tabelaFP(b.prioridade_fp, `${prefixo}-fp1`)}
       </div>
     </div>
 
@@ -405,11 +669,11 @@ function renderBloco(b, picksPorJogador) {
     <div class="grid-2">
       <div class="card">
         <div class="card-header teal"><span class="dot"></span>Bans Fase 1</div>
-        ${tabelaBans(b.bans_f1, 'teal', 'qtd', 'rate')}
+        ${tabelaBans(b.bans_f1, 'teal', 'qtd', 'rate', `${prefixo}-bansf1`)}
       </div>
       <div class="card">
         <div class="card-header azul"><span class="dot"></span>Bans Totais</div>
-        ${tabelaBans(b.seus_bans, 'blue', 'bans_totais', 'rate')}
+        ${tabelaBans(b.seus_bans, 'blue', 'bans_totais', 'rate', `${prefixo}-banstot`)}
       </div>
     </div>
 
@@ -417,11 +681,11 @@ function renderBloco(b, picksPorJogador) {
     <div class="grid-2">
       <div class="card">
         <div class="card-header vermelho"><span class="dot"></span>Bans Fase 1</div>
-        ${tabelaBans(b.bans_adv_f1, 'red', 'qtd', 'rate')}
+        ${tabelaBans(b.bans_adv_f1, 'red', 'qtd', 'rate', `${prefixo}-advf1`)}
       </div>
       <div class="card">
         <div class="card-header vermelho"><span class="dot"></span>Bans Totais</div>
-        ${tabelaBans(b.bans_contra, 'red', 'bans_totais', 'rate')}
+        ${tabelaBans(b.bans_contra, 'red', 'bans_totais', 'rate', `${prefixo}-advtot`)}
       </div>
     </div>
 
@@ -443,18 +707,25 @@ function renderPicksPorJogador(ppj) {
 
     const barClass = `bar-rota-${rota}`;
 
-    const playersHtml = players.map(p => {
+    const playersHtml = players.map((p, idxPlayer) => {
       const isSub    = !p.titular;
       const maxPicks = p.picks?.[0]?.picks ?? 1;
 
       // Mesmas colunas de tabelaPicks: Campeão | Pick Rate (barra+%) | # | Win Rate
-      const linhas = (p.picks ?? []).map(row => {
+      const colunasPlayer = [
+        { chave: 'champion', label: 'Campeão', numerica: false },
+        { chave: 'pick_rate', label: 'Pick Rate', numerica: true },
+        { chave: 'picks', label: '#', numerica: true },
+        { chave: 'win_rate', label: 'Win Rate', numerica: true }
+      ];
+
+      const tabela = tabelaSortavel(`player-${rota}-${idxPlayer}`, colunasPlayer, p.picks ?? [], row => {
         const nome = row.champion ?? row.index ?? '?';
         const barW = Math.min(100, Math.round(((row.picks ?? 0) / maxPicks) * 100));
         const wr   = row.win_rate ?? 0;
         const wrC  = wr >= 60 ? 'wr-hi' : wr >= 45 ? 'wr-mid' : 'wr-lo';
         return `<tr>
-          <td>${nome}</td>
+          <td>${linkCamp(nome)}</td>
           <td><div class="bar-cell">
             <div class="bar-wrap"><div class="bar-fill ${barClass}" style="width:${barW}%"></div></div>
             <span class="bar-pct val-dim">${row.pick_rate ?? 0}%</span>
@@ -462,16 +733,7 @@ function renderPicksPorJogador(ppj) {
           <td class="val-dim">${row.picks ?? 0}</td>
           <td><span class="wr-badge ${wrC}">${wr}%</span></td>
         </tr>`;
-      }).join('');
-
-      const tabela = linhas
-        ? `<table>
-            <thead><tr>
-              <th>Campeão</th><th>Pick Rate</th><th>#</th><th>Win Rate</th>
-            </tr></thead>
-            <tbody>${linhas}</tbody>
-           </table>`
-        : '<div style="padding:10px;color:var(--text-dim);font-size:11px">Sem dados</div>';
+      }, { chave: 'picks', dir: 'desc' });
 
       return `
         <div class="player-card">
@@ -482,7 +744,7 @@ function renderPicksPorJogador(ppj) {
               <span class="player-jogos">${p.jogos} Partidas</span>
             </div>
           </div>
-          ${tabela}
+          <div class="tabela-scroll">${tabela}</div>
         </div>`;
     }).join('');
 
@@ -497,72 +759,115 @@ function renderPicksPorJogador(ppj) {
 }
 
 // ── Tabelas padrão ────────────────────────────────────────
-function tabelaPicks(lista, barClass = 'bar-green') {
-  if (!lista?.length) return vazio();
-  const max = lista[0]?.picks ?? 1;
-  return `<table>
-    <thead><tr><th>Campeão</th><th>Pick Rate</th><th>#</th><th>Win Rate</th></tr></thead>
-    <tbody>${lista.map(row => {
-      const wr = row.win_rate ?? 0;
-      const barW = Math.min(100, Math.round((row.picks / max) * 100));
-      const wrC = wr >= 60 ? 'wr-hi' : wr >= 45 ? 'wr-mid' : 'wr-lo';
-      return `<tr>
-        <td>${row.champion}</td>
-        <td><div class="bar-cell"><div class="bar-wrap"><div class="bar-fill ${barClass}" style="width:${barW}%"></div></div><span class="bar-pct val-dim">${row.pick_rate}%</span></div></td>
-        <td class="val-dim">${row.picks}</td>
-        <td><span class="wr-badge ${wrC}">${wr}%</span></td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table>`;
+function tabelaPicks(lista, barClass = 'bar-green', id = 'picks') {
+  const max = lista?.[0]?.picks ?? 1;
+
+  const colunas = [
+    { chave: 'champion', label: 'Campeão', numerica: false },
+    { chave: 'pick_rate', label: 'Pick Rate', numerica: true },
+    { chave: 'picks', label: '#', numerica: true },
+    { chave: 'win_rate', label: 'Win Rate', numerica: true }
+  ];
+
+  return `<div class="tabela-scroll">${tabelaSortavel(id, colunas, lista, row => {
+    const wr = row.win_rate ?? 0;
+    const barW = Math.min(100, Math.round((row.picks / max) * 100));
+    const wrC = wr >= 60 ? 'wr-hi' : wr >= 45 ? 'wr-mid' : 'wr-lo';
+    return `<tr>
+      <td>${linkCamp(row.champion)}</td>
+      <td><div class="bar-cell"><div class="bar-wrap"><div class="bar-fill ${barClass}" style="width:${barW}%"></div></div><span class="bar-pct val-dim">${row.pick_rate}%</span></div></td>
+      <td class="val-dim">${row.picks}</td>
+      <td><span class="wr-badge ${wrC}">${wr}%</span></td>
+    </tr>`;
+  }, { chave: 'picks', dir: 'desc' })}</div>`;
 }
 
-function tabelaFP(lista) {
-  if (!lista?.length) return vazio();
-  const max = lista[0]?.picks ?? 1;
-  return `<table>
-    <thead><tr><th>Campeão</th><th>Freq. P1</th><th>#</th></tr></thead>
-    <tbody>${lista.map(row => {
-      const barW = Math.min(100, Math.round((row.picks / max) * 100));
-      return `<tr>
-        <td>${row.champion}</td>
-        <td><div class="bar-cell"><div class="bar-wrap"><div class="bar-fill bar-gold" style="width:${barW}%"></div></div><span class="bar-pct val-dim">${row.pick_rate}%</span></div></td>
-        <td class="val-dim">${row.picks}</td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table>`;
+function tabelaFP(lista, id = 'fp') {
+  const max = lista?.[0]?.picks ?? 1;
+
+  const colunas = [
+    { chave: 'champion', label: 'Campeão', numerica: false },
+    { chave: 'pick_rate', label: 'Freq. P1', numerica: true },
+    { chave: 'picks', label: '#', numerica: true }
+  ];
+
+  return `<div class="tabela-scroll">${tabelaSortavel(id, colunas, lista, row => {
+    const barW = Math.min(100, Math.round((row.picks / max) * 100));
+    return `<tr>
+      <td>${linkCamp(row.champion)}</td>
+      <td><div class="bar-cell"><div class="bar-wrap"><div class="bar-fill bar-gold" style="width:${barW}%"></div></div><span class="bar-pct val-dim">${row.pick_rate}%</span></div></td>
+      <td class="val-dim">${row.picks}</td>
+    </tr>`;
+  }, { chave: 'picks', dir: 'desc' })}</div>`;
 }
 
-function tabelaBans(lista, cor, campoQtd, campoPct) {
-  if (!lista?.length) return vazio();
-  const max = lista[0]?.[campoQtd] ?? 1;
+function tabelaBans(lista, cor, campoQtd, campoPct, id = 'bans') {
+  const max = lista?.[0]?.[campoQtd] ?? 1;
   const barC = { teal:'bar-teal', blue:'bar-blue', red:'bar-red', gold:'bar-gold' }[cor] ?? 'bar-teal';
-  return `<table>
-    <thead><tr><th>Campeão</th><th>Rate</th><th>#</th></tr></thead>
-    <tbody>${lista.map(row => {
-      const barW = Math.min(100, Math.round((row[campoQtd] / max) * 100));
-      return `<tr>
-        <td>${row.champion}</td>
-        <td><div class="bar-cell"><div class="bar-wrap"><div class="bar-fill ${barC}" style="width:${barW}%"></div></div><span class="bar-pct">${row[campoPct]}%</span></div></td>
-        <td class="val-dim">${row[campoQtd]}</td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table>`;
+
+  const colunas = [
+    { chave: 'champion', label: 'Campeão', numerica: false },
+    { chave: campoPct, label: 'Rate', numerica: true },
+    { chave: campoQtd, label: '#', numerica: true }
+  ];
+
+  return `<div class="tabela-scroll">${tabelaSortavel(id, colunas, lista, row => {
+    const barW = Math.min(100, Math.round((row[campoQtd] / max) * 100));
+    return `<tr>
+      <td>${linkCamp(row.champion)}</td>
+      <td><div class="bar-cell"><div class="bar-wrap"><div class="bar-fill ${barC}" style="width:${barW}%"></div></div><span class="bar-pct">${row[campoPct]}%</span></div></td>
+      <td class="val-dim">${row[campoQtd]}</td>
+    </tr>`;
+  }, { chave: campoQtd, dir: 'desc' })}</div>`;
 }
 
 function vazio() {
   return '<div style="padding:14px;color:var(--text-dim);font-size:12px">Sem dados</div>';
 }
 
+// Nome de campeão clicável: leva pra página do campeão (aba Campeões)
+function linkCamp(nome) {
+  const esc = String(nome).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return `<span class="link-camp" onclick="event.stopPropagation();irParaCampeao('${esc}')">${nome}</span>`;
+}
+
+async function irParaCampeao(nome) {
+  if (modoAtivo !== 'campeoes') {
+    mudarModo('campeoes', false);
+    await atualizarFiltros(); // splits/patches do recorte de ligas da aba Campeões
+  }
+  abrirCampeao(nome);
+}
+
+// Sinergia agrupada por campeão de referência.
+// Usa "sinergias_ref" (direcional, vem do backend novo). Se o backend ainda
+// não tiver essa chave, agrupa os pares antigos (taxa simétrica).
+function sinergiasPorReferencia(d) {
+  const aliados = d.aliados || [];
+  if (aliados.length < 2) return [];
+  if (d.sinergias_ref && d.sinergias_ref.length) return d.sinergias_ref;
+
+  const mapa = {};
+  aliados.forEach(a => { mapa[a] = []; });
+  (d.sinergias || []).forEach(s => {
+    if (mapa[s.campeao_a]) mapa[s.campeao_a].push({ aliado: s.campeao_b, jogos_juntos: s.jogos_juntos, taxa_sinergia: s.taxa_sinergia });
+    if (mapa[s.campeao_b]) mapa[s.campeao_b].push({ aliado: s.campeao_a, jogos_juntos: s.jogos_juntos, taxa_sinergia: s.taxa_sinergia });
+  });
+  return aliados.map(a => ({ referencia: a, sinergias: mapa[a] }));
+}
+
 // ═══════════════════════════════════════════════════════════
 // CAMPEÕES — Lista (Champion Intelligence) + Hub do campeão
 // ═══════════════════════════════════════════════════════════
 async function carregarListaCampeoes() {
+  campeaoAtual = null;
   const ano = document.getElementById('anoSelect').value;
   const pos = document.getElementById('posicaoSelect').value;
   const c = document.getElementById('content');
   c.innerHTML = '<div class="loading">Carregando...</div>';
 
-  const url = `${API}/stats/campeoes?${queryLigas()}${ano ? '&year=' + ano : ''}${pos ? '&posicao=' + pos : ''}`;
+  // ALTERADO: entrou ${queryFiltro()} no fim (split/patch)
+  const url = `${API}/stats/campeoes?${queryLigas()}${ano ? '&year=' + ano : ''}${pos ? '&posicao=' + pos : ''}${queryFiltro()}`;
 
   try {
     const lista = await fetch(url).then(r => r.json());
@@ -581,48 +886,57 @@ function filtrarCampeoesLista() {
 
 function renderListaCampeoes(lista) {
   const c = document.getElementById('content');
+
+  const colunas = [
+    { chave: 'champion', label: 'Campeão', numerica: false },
+    { chave: 'posicao', label: 'Posição', numerica: false },
+    { chave: 'win_rate', label: 'Win Rate', numerica: true },
+    { chave: 'jogos', label: 'Jogos', numerica: true },
+    { chave: 'pick_rate', label: 'Pick Rate', numerica: true },
+    { chave: 'bans', label: 'Bans', numerica: true },
+    { chave: 'ban_rate', label: 'Ban Rate', numerica: true },
+    { chave: 'presence', label: 'Presença', numerica: true },
+    { chave: 'fp_wr', label: 'FP WR', numerica: true },
+    { chave: 'lp_wr', label: 'LP WR', numerica: true }
+  ];
+
+  const tabela = tabelaSortavel('champion-intel', colunas, lista, camp => {
+    const wr = camp.win_rate ?? 0;
+    const wrC = corWR(wr);
+    const nomeEsc = camp.champion.replace(/'/g, "\\'");
+    return `<tr class="clicavel" onclick="abrirCampeao('${nomeEsc}')">
+      <td>${camp.champion}</td>
+      <td class="val-dim">${(camp.posicao || '').toUpperCase()}</td>
+      <td><span class="wr-badge ${wrC}">${wr}%</span></td>
+      <td class="val-dim">${camp.jogos}</td>
+      <td class="val-dim">${camp.pick_rate}%</td>
+      <td class="val-dim">${camp.bans}</td>
+      <td class="val-dim">${camp.ban_rate}%</td>
+      <td class="val-dim">${camp.presence}%</td>
+      <td class="val-dim">${camp.fp_wr}%</td>
+      <td class="val-dim">${camp.lp_wr}%</td>
+    </tr>`;
+  }, { chave: 'presence', dir: 'desc' });
+
   c.innerHTML = `
     <div class="page-header">
       <div>
         <div class="page-title">Champion Intelligence</div>
-        <div class="page-sub">${lista.length} campeões</div>
+        <div class="page-sub">${lista.length} campeões${labelFiltro()}</div>
       </div>
     </div>
-    <div class="card">
-      ${lista.length ? `<table>
-        <thead><tr>
-          <th>Campeão</th><th>Posição</th><th>Win Rate</th><th>Jogos</th><th>Pick Rate</th><th>Bans</th><th>Ban Rate</th><th>Presença</th><th>FP WR</th><th>LP WR</th>
-        </tr></thead>
-        <tbody>
-          ${lista.map(camp => {
-            const wr = camp.win_rate ?? 0;
-            const wrC = corWR(wr);
-            const nomeEsc = camp.champion.replace(/'/g, "\\'");
-            return `<tr class="clicavel" onclick="abrirCampeao('${nomeEsc}')">
-              <td>${camp.champion}</td>
-              <td class="val-dim">${(camp.posicao || '').toUpperCase()}</td>
-              <td><span class="wr-badge ${wrC}">${wr}%</span></td>
-              <td class="val-dim">${camp.jogos}</td>
-              <td class="val-dim">${camp.pick_rate}%</td>
-              <td class="val-dim">${camp.bans}</td>
-              <td class="val-dim">${camp.ban_rate}%</td>
-              <td class="val-dim">${camp.presence}%</td>
-              <td class="val-dim">${camp.fp_wr}%</td>
-              <td class="val-dim">${camp.lp_wr}%</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>` : vazio()}
-    </div>
+    <div class="card">${tabela}</div>
   `;
 }
 
 async function abrirCampeao(nome) {
+  campeaoAtual = nome;
   const ano = document.getElementById('anoSelect').value;
   const c = document.getElementById('content');
   c.innerHTML = '<div class="loading">Carregando...</div>';
 
-  const url = `${API}/stats/campeao?campeao=${encodeURIComponent(nome)}&${queryLigas()}${ano ? '&year=' + ano : ''}`;
+  // ALTERADO: entrou ${queryFiltro()} no fim (split/patch)
+  const url = `${API}/stats/campeao?campeao=${encodeURIComponent(nome)}&${queryLigas()}${ano ? '&year=' + ano : ''}${queryFiltro()}`;
 
   try {
     const d = await fetch(url).then(r => r.json());
@@ -631,6 +945,11 @@ async function abrirCampeao(nome) {
   } catch(e) {
     c.innerHTML = `<div class="empty" style="color:var(--red)">Erro: ${e.message}</div>`;
   }
+}
+
+function voltarListaCampeoes() {
+  campeaoAtual = null;
+  renderListaCampeoes(todosOsCampeoesLista);
 }
 
 function renderCampeaoHub(d) {
@@ -645,15 +964,17 @@ function renderCampeaoHub(d) {
 
   const fpWr = s.fp_wr ?? 0;
   const lpWr = s.lp_wr ?? 0;
+  const corFpWr = { 'wr-hi': 'var(--green)', 'wr-mid': 'var(--gold)', 'wr-lo': 'var(--red)' }[corWR(fpWr)];
+  const corLpWr = { 'wr-hi': 'var(--green)', 'wr-mid': 'var(--gold)', 'wr-lo': 'var(--red)' }[corWR(lpWr)];
 
   c.innerHTML = `
     <div class="page-header">
       <div>
         <div class="page-title">${d.campeao}</div>
-        <div class="page-sub">${d.total_jogos} jogos na base${(d.rotas_campeao||[]).length ? ' · Joga: ' + d.rotas_campeao.map(r => ROTA_LABEL[r] || r).join(', ') : ''}</div>
+        <div class="page-sub">${d.total_jogos} jogos na base${labelFiltro()}${(d.rotas_campeao||[]).length ? ' · Joga: ' + d.rotas_campeao.map(r => ROTA_LABEL[r] || r).join(', ') : ''}</div>
       </div>
       <div class="pills">
-        <div class="pill clicavel" onclick="renderListaCampeoes(todosOsCampeoesLista)">← Voltar à lista</div>
+        <div class="pill clicavel" onclick="voltarListaCampeoes()">← Voltar à lista</div>
       </div>
     </div>
 
@@ -670,11 +991,11 @@ function renderCampeaoHub(d) {
       <div class="side-block">
         <div class="side-row"><span style="color:var(--gold)">First Pick</span><span class="val-dim">${s.fp_jogos ?? 0} jogos</span></div>
         <div class="bar-wrap" style="height:6px;margin:4px 0"><div class="bar-fill bar-gold" style="width:${fpWr}%;height:6px"></div></div>
-        <div style="color:var(--green);font-weight:600;margin-bottom:14px">${fpWr}% Win Rate</div>
+        <div style="color:${corFpWr};font-weight:600;margin-bottom:14px">${fpWr}% Win Rate</div>
 
         <div class="side-row"><span style="color:var(--purple)">Last Pick</span><span class="val-dim">${s.lp_jogos ?? 0} jogos</span></div>
         <div class="bar-wrap" style="height:6px;margin:4px 0"><div class="bar-fill bar-purple" style="width:${lpWr}%;height:6px"></div></div>
-        <div style="color:var(--green);font-weight:600">${lpWr}% Win Rate</div>
+        <div style="color:${corLpWr};font-weight:600">${lpWr}% Win Rate</div>
       </div>
     </div>
 
@@ -684,17 +1005,17 @@ function renderCampeaoHub(d) {
     <div class="grid-2">
       <div class="card">
         <div class="card-header verde"><span class="dot"></span>Melhores Matchups (Forte Contra)</div>
-        ${tabelaMatchup(d.forte_contra)}
+        ${tabelaMatchup(d.forte_contra, 'matchup-forte')}
       </div>
       <div class="card">
         <div class="card-header vermelho"><span class="dot"></span>Piores Matchups (Fraco Contra)</div>
-        ${tabelaMatchup(d.fraco_contra)}
+        ${tabelaMatchup(d.fraco_contra, 'matchup-fraco')}
       </div>
     </div>
 
     <div class="secao-label">Top Jogadores</div>
     <div class="card">
-      ${tabelaTopPlayers(d.top_players)}
+      ${tabelaTopPlayers(d.top_players, 'top-players')}
     </div>
   `;
 }
@@ -707,71 +1028,79 @@ function renderDuplas(duplas) {
     return `<div class="card">${vazio()}</div>`;
   }
 
+  const colunas = [
+    { chave: 'champion', label: 'Campeão', numerica: false },
+    { chave: 'jogos', label: 'Jogos', numerica: true },
+    { chave: 'frequencia', label: 'Freq.', numerica: true },
+    { chave: 'win_rate', label: 'Win Rate', numerica: true }
+  ];
+
   const cards = rotasComDados.map(r => {
-    const linhas = duplas[r].map((dup, i) => `
+    const tabela = tabelaSortavel('duplas-' + r, colunas, duplas[r], dup => `
       <tr>
-        <td class="val-dim">${i + 1}</td>
-        <td>${dup.champion}</td>
+        <td>${linkCamp(dup.champion)}</td>
         <td class="val-dim">${dup.jogos}</td>
         <td class="val-dim">${dup.frequencia}%</td>
         <td><span class="wr-badge ${corWR(dup.win_rate)}">${dup.win_rate}%</span></td>
-      </tr>`).join('');
+      </tr>`, { chave: 'jogos', dir: 'desc' });
 
     return `
       <div class="card">
         <div class="card-header azul"><span class="dot"></span>${ROTA_LABEL[r]}</div>
-        <table>
-          <thead><tr><th>#</th><th>Campeão</th><th>Jogos</th><th>Freq.</th><th>Win Rate</th></tr></thead>
-          <tbody>${linhas}</tbody>
-        </table>
+        <div class="tabela-scroll">${tabela}</div>
       </div>`;
   }).join('');
 
   return `<div class="duplas-grid">${cards}</div>`;
 }
 
-function tabelaTopPlayers(lista) {
-  if (!lista?.length) return vazio();
-  return `<table>
-    <thead><tr><th>#</th><th>Jogador</th><th>Time</th><th>Jogos</th><th>Win Rate</th></tr></thead>
-    <tbody>${lista.map((p, i) => {
-      const wrC = corWR(p.win_rate);
-      return `<tr>
-        <td class="val-dim">${i + 1}</td>
-        <td>${p.player}</td>
-        <td class="val-dim">${p.time}</td>
-        <td class="val-dim">${p.partidas}</td>
-        <td><span class="wr-badge ${wrC}">${p.win_rate}%</span></td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table>`;
+function tabelaTopPlayers(lista, id = 'top-players') {
+  const colunas = [
+    { chave: 'player', label: 'Jogador', numerica: false },
+    { chave: 'time', label: 'Time', numerica: false },
+    { chave: 'partidas', label: 'Jogos', numerica: true },
+    { chave: 'win_rate', label: 'Win Rate', numerica: true }
+  ];
+
+  const tabela = tabelaSortavel(id, colunas, lista, p => `<tr>
+    <td>${p.player}</td>
+    <td class="val-dim">${p.time}</td>
+    <td class="val-dim">${p.partidas}</td>
+    <td><span class="wr-badge ${corWR(p.win_rate)}">${p.win_rate}%</span></td>
+  </tr>`, { chave: 'partidas', dir: 'desc' });
+
+  return `<div class="tabela-scroll">${tabela}</div>`;
 }
 
-function tabelaMatchup(lista) {
-  if (!lista?.length) return vazio();
-  return `<div class="tabela-scroll"><table>
-    <thead><tr><th>Campeão</th><th>Win Rate</th><th>Jogos</th><th>Resposta</th></tr></thead>
-    <tbody>${lista.map(m => {
-      const wrC = corWR(m.win_rate);
-      return `<tr>
-        <td>${m.champion}</td>
-        <td><span class="wr-badge ${wrC}">${m.win_rate}%</span></td>
-        <td class="val-dim">${m.jogos}</td>
-        <td class="val-dim">${m.resposta_rate}%</td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table></div>`;
+function tabelaMatchup(lista, id = 'matchup') {
+  const colunas = [
+    { chave: 'champion', label: 'Campeão', numerica: false },
+    { chave: 'win_rate', label: 'Win Rate', numerica: true },
+    { chave: 'jogos', label: 'Jogos', numerica: true },
+    { chave: 'resposta_rate', label: 'Resposta', numerica: true }
+  ];
+
+  const tabela = tabelaSortavel(id, colunas, lista, m => `<tr>
+    <td>${linkCamp(m.champion)}</td>
+    <td><span class="wr-badge ${corWR(m.win_rate)}">${m.win_rate}%</span></td>
+    <td class="val-dim">${m.jogos}</td>
+    <td class="val-dim">${m.resposta_rate}%</td>
+  </tr>`, { chave: 'jogos', dir: 'desc' });
+
+  return `<div class="tabela-scroll">${tabela}</div>`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // ALTERADO: trocar de temporada também refaz a lista de splits/patches
   document.getElementById('anoSelect').addEventListener('change', () => {
-    if (modoAtivo === 'time' && timeSelecionado) carregarTime(timeSelecionado);
-    else if (modoAtivo === 'campeoes') carregarListaCampeoes();
+    if (modoAtivo === 'sandbox') return;
+    atualizarFiltrosETela();
   });
 });
 
 // ═══════════════════════════════════════════════════════════
 // SANDBOX — matchup direto campeão x campeão (aliados x inimigos)
+// (sem filtro de split/patch, de propósito)
 // ═══════════════════════════════════════════════════════════
 let chipsAliados = [];
 let chipsInimigos = [];
@@ -834,40 +1163,92 @@ async function buscarConfrontos() {
 function renderConfrontos(d) {
   const c = document.getElementById('content');
 
-  const blocos = d.matchups.map(linha => {
-    const linhas = linha.confrontos.map(cf => {
+  const colunas = [
+    { chave: 'aliado', label: 'Aliado', numerica: false },
+    { chave: 'jogos', label: 'Jogos', numerica: true },
+    { chave: 'vitorias', label: 'V/D', numerica: true },
+    { chave: 'win_rate', label: 'Win Rate', numerica: true }
+  ];
+
+  const blocos = d.matchups.map((linha, idx) => {
+    const tabela = tabelaSortavel(`sandbox-${idx}`, colunas, linha.confrontos, cf => {
       if (cf.win_rate === null) {
         return `<tr>
-          <td>${cf.aliado}</td>
+          <td>${linkCamp(cf.aliado)}</td>
           <td class="val-dim" colspan="3">Sem dados desse confronto na base</td>
         </tr>`;
       }
       return `<tr>
-        <td>${cf.aliado}</td>
+        <td>${linkCamp(cf.aliado)}</td>
         <td class="val-dim">${cf.jogos}</td>
         <td class="val-dim">${cf.vitorias}V / ${cf.derrotas}D</td>
         <td><span class="wr-badge ${corWR(cf.win_rate)}">${cf.win_rate}%</span></td>
       </tr>`;
-    }).join('');
+    }, { chave: 'jogos', dir: 'desc' });
 
     return `
       <div class="card">
-        <div class="card-header vermelho"><span class="dot"></span>Contra ${linha.inimigo}</div>
-        <table>
-          <thead><tr><th>Aliado</th><th>Jogos</th><th>V/D</th><th>Win Rate</th></tr></thead>
-          <tbody>${linhas}</tbody>
-        </table>
+        <div class="card-header vermelho"><span class="dot"></span>Contra ${linkCamp(linha.inimigo)}</div>
+        ${tabela}
       </div>`;
   }).join('');
 
+  const colunasResposta = [
+    { chave: 'aliado', label: 'Aliado', numerica: false },
+    { chave: 'resposta_rate', label: 'Taxa de Resposta', numerica: true }
+  ];
+
+  const blocosResposta = (d.respostas || []).map((linha, idx) => {
+    const tabelaResp = tabelaSortavel(`sandbox-resp-${idx}`, colunasResposta, linha.respostas, r => `<tr>
+      <td>${linkCamp(r.aliado)}</td>
+      <td><span class="wr-badge ${corWR(r.resposta_rate)}">${r.resposta_rate}%</span></td>
+    </tr>`, { chave: 'resposta_rate', dir: 'desc' });
+
+    return `
+      <div class="card">
+        <div class="card-header vermelho"><span class="dot"></span>Resposta a ${linkCamp(linha.inimigo)}</div>
+        ${tabelaResp}
+      </div>`;
+  }).join('');
+
+  // ── Bloco de Sinergia: um card por campeão de referência ──
+  const colunasSinergia = [
+    { chave: 'aliado', label: 'Aliado', numerica: false },
+    { chave: 'jogos_juntos', label: 'Jogos Juntos', numerica: true },
+    { chave: 'taxa_sinergia', label: 'Taxa de Sinergia', numerica: true }
+  ];
+
+  const cardsSinergia = sinergiasPorReferencia(d).map((g, idx) => {
+    const tabelaSin = tabelaSortavel(`sandbox-sin-${idx}`, colunasSinergia, g.sinergias, s => `<tr>
+      <td>${linkCamp(s.aliado)}</td>
+      <td class="val-dim">${s.jogos_juntos}</td>
+      <td><span class="wr-badge ${corWR(s.taxa_sinergia)}">${s.taxa_sinergia}%</span></td>
+    </tr>`, { chave: 'taxa_sinergia', dir: 'desc' });
+
+    return `
+      <div class="card">
+        <div class="card-header azul"><span class="dot"></span>Sinergia com ${linkCamp(g.referencia)}</div>
+        ${tabelaSin}
+      </div>`;
+  }).join('');
+
+  const blocoSinergia = cardsSinergia ? `<div class="duplas-grid">${cardsSinergia}</div>` : '';
+
+  // ── Renderização Final da Tela Sandbox ──
   c.innerHTML = `
     <div class="page-header">
       <div>
         <div class="page-title">${d.aliados.join(' + ')} vs ${d.inimigos.join(' + ')}</div>
-        <div class="page-sub">Win rate de cada aliado contra cada inimigo, confronto direto (matchup_total/matchup_vitorias)</div>
+        <div class="page-sub">Win rate de cada aliado contra cada inimigo, confronto direto</div>
       </div>
     </div>
+    
     <div class="duplas-grid">${blocos}</div>
+
+    <div class="secao-label">Taxa de Resposta (aliado x inimigo)</div>
+    <div class="duplas-grid">${blocosResposta}</div>
+
+    ${blocoSinergia ? `<div class="secao-label">Sinergia entre Aliados</div>${blocoSinergia}` : ''}
   `;
 }
 

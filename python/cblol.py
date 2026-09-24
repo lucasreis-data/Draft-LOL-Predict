@@ -163,9 +163,9 @@ tabela_final["patch_num"] = ((tabela_final["patch"] * 100).round().fillna(0).ast
 #display(tabela_final)
 
 # %%
-def filtar_dados(liga = None, year = None):
+def filtar_dados(liga = None, year = None, split = None, patch = None):
 
-    df_meta_liga = tabela_final.copy()
+    df_meta_liga = tabela_final.copy() # Avaliar 
 
     if year is not None:
         df_meta_liga = df_meta_liga[df_meta_liga["year"] == year]
@@ -174,6 +174,18 @@ def filtar_dados(liga = None, year = None):
         if isinstance(liga, str):
             liga = [liga]
         df_meta_liga = df_meta_liga[df_meta_liga["league_unificada"].isin(liga)]
+
+    if split is not None:
+        if isinstance(split, str):
+            split = [split]
+        df_meta_liga = df_meta_liga[df_meta_liga["split"].isin(split)]
+
+    if patch is not None:
+        if isinstance(patch, (int, str)):
+            patch = [patch]
+        patch = [int(p) for p in patch]
+        
+        df_meta_liga = df_meta_liga[df_meta_liga["patch_num"].isin(patch)]
 
     return df_meta_liga
 
@@ -243,9 +255,11 @@ def construir_df_meta(tabela_liga = None):
 df_meta = construir_df_meta(tabela_liga_ativa)
 
 # %%
-def analisar_estrategias(nome_time, ano_analise = None):
+def analisar_estrategias(nome_time, ano_analise = None, splits = None, patches = None ):
+
+    tabela_base = filtar_dados(liga = None, year = ano_analise, split = splits, patch = patches)
     
-    df_filtro = tabela_final[(tabela_final["teamname"] == nome_time) & (tabela_final["position"] == "team") & (tabela_final["year"] == ano_analise)]
+    df_filtro = tabela_base[(tabela_base["teamname"] == nome_time) & (tabela_base["position"] == "team") & (tabela_base["year"] == ano_analise)]
 
     if df_filtro.empty:
         print(f"Time {nome_time} não encontrado para o ano de {ano_analise}")
@@ -255,13 +269,13 @@ def analisar_estrategias(nome_time, ano_analise = None):
     ids_fp = df_filtro[df_filtro["firstPick"] == 1]["gameid"].unique()
     ids_lp = df_filtro[df_filtro["firstPick"] == 0]["gameid"].unique()
 
-    df_players_geral = tabela_final[(tabela_final["teamname"] == nome_time) & (tabela_final["year"] == ano_analise) & (tabela_final["position"] != "team")]
+    df_players_geral = tabela_base[(tabela_base["teamname"] == nome_time) & (tabela_base["year"] == ano_analise) & (tabela_base["position"] != "team")]
     df_players_fp = df_players_geral[df_players_geral["gameid"].isin(ids_fp)]
     df_players_lp = df_players_geral[df_players_geral["gameid"].isin(ids_lp)]
 
-    df_adv_geral = tabela_final[(tabela_final["gameid"].isin(ids_todos) & (tabela_final["teamname"] != nome_time) & (tabela_final["position"] == "team"))]
-    df_adv_fp = tabela_final[(tabela_final["gameid"].isin(ids_fp) & (tabela_final["teamname"] != nome_time) & (tabela_final["position"] == "team"))]
-    df_adv_lp = tabela_final[(tabela_final["gameid"].isin(ids_lp) & (tabela_final["teamname"] != nome_time) & (tabela_final["position"] == "team"))]
+    df_adv_geral = tabela_base[(tabela_base["gameid"].isin(ids_todos) & (tabela_base["teamname"] != nome_time) & (tabela_base["position"] == "team"))]
+    df_adv_fp = tabela_base[(tabela_base["gameid"].isin(ids_fp) & (tabela_base["teamname"] != nome_time) & (tabela_base["position"] == "team"))]
+    df_adv_lp = tabela_base[(tabela_base["gameid"].isin(ids_lp) & (tabela_base["teamname"] != nome_time) & (tabela_base["position"] == "team"))]
 
     def processar_first_pick(df_contexto):
 
@@ -276,7 +290,7 @@ def analisar_estrategias(nome_time, ano_analise = None):
             "pick_rate": (stats.values / total_jogos_fp * 100).round(1)
         }) 
 
-        return df_resumo_fp.head(10).to_dict(orient = "records")
+        return df_resumo_fp.head(60).to_dict(orient = "records")
 
 
     def processar_picks(df_contexto):
@@ -291,7 +305,7 @@ def analisar_estrategias(nome_time, ano_analise = None):
         stats["pick_rate"] = (stats["picks"] / total_jogos * 100).round(1)
         stats["win_rate"] = (stats["vitorias"] / stats["picks"] * 100).round(1)
         stats.index.name = "champion"
-        stats = stats.sort_values("picks", ascending = False).head(10)
+        stats = stats.sort_values("picks", ascending = False).head(60)
 
         return stats.reset_index().to_dict(orient = "records")
 
@@ -311,7 +325,7 @@ def analisar_estrategias(nome_time, ano_analise = None):
             "rate": (bans_f1.values / total_jogos * 100).round(1)
         }).fillna(0)
         
-        return df_bans_fase1.head(10).to_dict(orient = "records")
+        return df_bans_fase1.head(60).to_dict(orient = "records")
 
 
     def processar_bans_totais(df_contexto):
@@ -330,7 +344,7 @@ def analisar_estrategias(nome_time, ano_analise = None):
             "rate": (bans_totais.values / total_jogos * 100).round(1)
         }).fillna(0)
 
-        return df_bans_totais.sort_values("bans_totais", ascending=False).head(10).to_dict(orient="records")
+        return df_bans_totais.sort_values("bans_totais", ascending=False).head(60).to_dict(orient="records")
 
 
     def montar_bloco(df_picks, df_filtro, df_adv, titulo, jogos):
@@ -380,7 +394,7 @@ def analisar_estrategias(nome_time, ano_analise = None):
                 stats["pick_rate"] = (stats["picks"] / total * 100).round(1)
                 stats["win_rate"] = (stats["vitorias"] / stats["picks"] * 100).round(1)
 
-                stats = stats.sort_values("picks", ascending = False).head(10)
+                stats = stats.sort_values("picks", ascending = False).head(60)
                 stats.index.name = "champion"
                 
                 players.append({
@@ -1267,7 +1281,7 @@ def scout_campeao(champ_alvo, tabela = tabela_final, min_jogos = 50):
         if pos in rotas_campeao:
             continue
 
-        contagem_campeoes = df_duplas[df_duplas["position"] == pos]["champion"].value_counts().head(10)
+        contagem_campeoes = df_duplas[df_duplas["position"] == pos]["champion"].value_counts().head(20)
         df_rota = df_duplas[df_duplas["position"] == pos]
 
         lista_rota = []
@@ -1299,12 +1313,13 @@ def scout_campeao(champ_alvo, tabela = tabela_final, min_jogos = 50):
                 "champion" : camp_b,
                 "win_rate" : round(win_rate * 100, 1),
                 "jogos" : int(total),
-                "resposta_rate" : round(resposta_rate(camp_b, camp_a) * 100, 1)
             }
 
             if win_rate >= 0.50: # analisar oq fazer com champs equilibrados
+                matchup["resposta_rate"] = round(resposta_rate(champ_alvo, camp_b) * 100, 1)
                 forte_contra.append(matchup)
             else:
+                matchup["resposta_rate"]  = round(resposta_rate(camp_b, champ_alvo) * 100, 1)
                 fraco_contra.append(matchup)
 
     forte_contra = sorted(forte_contra, key = pegar_winrate, reverse = True)
@@ -1438,10 +1453,50 @@ def avaliar_confrontos(aliados, inimigos):
 
         matchups.append({"inimigo" : inimigo, "confrontos" : confrontos})
 
+    respostas = []
+
+    for inimigo in inimigos:
+
+        resp_individuais = []
+
+        for aliado in aliados:
+            resp_individuais.append({"aliado" : aliado, "resposta_rate" : round(resposta_rate(aliado, inimigo) * 100, 1)})
+
+        respostas.append({"inimigo" : inimigo, "respostas" : resp_individuais})
+
+    sinergia = []
+
+    for i in range(len(aliados)):
+
+        for j in range(i + 1, len(aliados)):
+
+            camp_a, camp_b = aliados[i], aliados[j]
+
+            par = tuple(sorted([camp_a, camp_b]))
+            n_juntos = contagem_pares.get(par, 0)
+
+            expo_a = contagem_exposicao.get(camp_a, 0)
+            expo_b = contagem_exposicao.get(camp_b, 0)
+            menor_expo = min(expo_a, expo_b)
+
+            if menor_expo > 0:
+                taxa = n_juntos / menor_expo
+            else:
+                taxa = 0
+
+            sinergia.append({
+                "campeao_a" : camp_a,
+                "campeao_b" : camp_b,
+                "jogos_juntos" : n_juntos,
+                "taxa_sinergia" : round(taxa * 100, 1)
+            })
+
     return {
         "aliados" : aliados,
         "inimigos" : inimigos,
-        "matchups" : matchups
+        "matchups" : matchups,
+        "respostas" : respostas,
+        "sinergias" : sinergia
     }
 
 
@@ -1622,7 +1677,7 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
     if modelo is not None:
         modelo_usado = modelo
     else:
-        modelo_usado = modelos_cache.buscar_modelos("GERAL")  # modelo_ia
+        modelo_usado = modelos_cache.buscar_modelos("GERAL")
 
     proibidos = list(bansTime1) + list(bansTime2) + list(picks_totais)
 
@@ -1960,14 +2015,14 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
     while len(picks_time2_nums) < 4:
         picks_time2_nums.append(-1)
-    
+
     # picks_time1_nums = cod_camp.transform(picksTime1).tolist() if len(picksTime1) > 0 else []
 
     picks_time1_nums = cod_camp_seguro(picksTime1)
 
     while len(picks_time1_nums) < 5:
         picks_time1_nums.append(-1)
-    
+
     historico_aliado = ban_fase1_fp if time_tem_p1_no_jogo else ban_fase1_lp
     total_aliado_ctx = total_fp if time_tem_p1_no_jogo else total_lp
     bans_champ_vs = bans_vs_fp if time_tem_p1_no_jogo else bans_vs_lp
@@ -1984,7 +2039,7 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
         for pick in picksTime1:
             total = total_pick_fase2.get(pick, 0)
-            
+
             if total < minimo_exposicao:
                 continue
 
@@ -2000,14 +2055,14 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
                 taxa = count / total
                 score_ban_fase2[ban] = score_ban_fase2.get(ban, 0) + taxa / len(picksTime1)
 
-    # Counter 
+    # Counter
 
     score_counter = {}
 
     if picksTime1:
 
         for camp in cod_camp.classes_:
-            forca_total = 0      
+            forca_total = 0
 
             for meu_pick in picksTime1:
                 forca_total += max(forca_matchup(camp, meu_pick), 0)
@@ -2016,7 +2071,7 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
     n_picks_feitos = len(picksTime2) + len(picksTime1)
     num_bans = preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo)
-    
+
     melhor_ban = None
     maior_perigo = -1
 
@@ -2034,26 +2089,57 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
         campeoes_modelo = cod_camp.inverse_transform(modelo_usado.classes_)
         ranking_inimigo = pd.Series(probs, index = campeoes_modelo)
 
-        for camp in cod_camp.classes_:
+        pool_rota = []
 
-            if camp in proibidos or camp not in dna_campeoes:
+        for champ in cod_camp.classes_:
+
+            if champ in proibidos:
                 continue
-            
-            if dna_campeoes[camp].get(rota, 0) < limiar_flex:
+            if champ not in dna_campeoes:
                 continue
+            if dna_campeoes[champ].get(rota, 0) < limiar_flex:
+                continue
+
+            pool_rota.append(champ)
+
+        jogados_rota_adv = {}
+
+        for champ in pool_rota:
+
+            if time2 in prioridade_historica.index:
+                jogados_rota_adv[champ] = prioridade_historica.loc[time2].get(champ, 0)
+            else:
+                jogados_rota_adv[champ] = 0
+
+        maior_freq_adv = max(jogados_rota_adv.values(), default = 0)
+
+        pool_normalizada_adv = {}
+
+        for champ, val in jogados_rota_adv.items():
+
+            if maior_freq_adv > 0:
+                pool_normalizada_adv[champ] = val / maior_freq_adv
+            else:
+                pool_normalizada_adv[champ] = 0
+
+        peso_pool_adv = peso_total_jogos.get(time2, 0)
+
+        for camp in pool_rota:
 
             prio_inimigo = 0
             prio_aliado = 0
 
             if time2 in prioridade_historica.index:
-                prio_inimigo = prioridade_historica.loc[time2].get(camp, 0)
-            
+                champ_geral_adv = jogados_rota_adv.get(camp, 0)
+                prio_norma_adv = pool_normalizada_adv.get(camp, 0)
+                prio_inimigo = nota_contexto(champ_geral_adv, prio_norma_adv, peso_pool_adv, 8, 0.30)
+
             if time1 in prioridade_historica.index:
                 prio_aliado = prioridade_historica.loc[time1].get(camp, 0)
-                
+
             if prio_aliado > limitar_ban_proprio:
                 continue
-            
+
             pref_ia = ranking_inimigo.get(camp, 0)
             meta_ban = (df_meta.loc[camp, "ban_rate"] / 100) if camp in df_meta.index else 0
 
@@ -2064,9 +2150,9 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
             if total_jogos_aliado > minimo_exposicao:
                 nota_geral_ban = contagem_bans / total_jogos_aliado
                 nota_bans_champ = bans_champ_vs.get((time1, time2), {}).get(camp, 0)
-                bans_confronto = bans_vs_adv.get((time1, time2), 0) 
+                bans_confronto = bans_vs_adv.get((time1, time2), 0)
                 bonus_historico_aliado = min(nota_contexto(nota_geral_ban, nota_bans_champ, bans_confronto), 0.25)
-            
+
             bonus_ameaca_oculta = 0
 
             total_jogos_contra = total_contra_ctx.get(time2, 1)
@@ -2192,8 +2278,8 @@ times_liga_ativa = tabela_liga_ativa["teamname"].unique()
 print(times_liga_ativa)
 
 # %%
-time1 = "FURIA"
-time2 = "LØS"
+time1 = "LOUD"
+time2 = "paiN Gaming"
 
 historico_fearless = []
 
