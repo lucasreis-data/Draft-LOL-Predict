@@ -18,9 +18,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def obter_modelo_sessao(state):
+def obter_modelo_sessao(liga: str):
     try:
-        return modelos_cache.buscar_modelos(state.get("liga"))
+        return modelos_cache.buscar_modelos(liga)
     except(ValueError, FileNotFoundError) as error:
         raise HTTPException(status_code = 400, detail = str(error))
 
@@ -73,7 +73,7 @@ def predict(data: dict = Body(...)):
 
     return {"draft": response}
 
-@app.get("/draft/sugestao")
+@app.post("/draft/sugestao")
 def pedir_sugestao(req: DraftRequest):
 
     modelo = obter_modelo_sessao(req.liga)

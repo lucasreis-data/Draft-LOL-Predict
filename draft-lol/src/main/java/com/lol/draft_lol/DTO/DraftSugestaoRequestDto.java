@@ -1,33 +1,18 @@
 package com.lol.draft_lol.DTO;
 
+import java.util.List;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotBlank;
-
-public record DraftSugestaoRequestDto (
-  @Schema(example = "LOUD", description= "Qual time você irá representar?")
-  @NotBlank(message = "O time não pode estar vazio")
-  @JsonProperty("timeUsuario")
-  String timeUser,
-   
-  @Schema(example = "FURIA", description= "Qual time a IA irá representar?")
-  @NotBlank(message = "O time não pode estar vazio")
-  @JsonProperty("timeIA")
-  String timeIA,
-  
-  
-  @Schema(example = "true", description= "Você vai ser First Pick? sim(true) ou não (false) ")
-  @JsonProperty("isFirstPick")
-  Boolean isFirstPick,
-
-
-  
-  @Schema(example = "3", description= "Quantidade de jogos na serie(apenas número)")
-  @NotBlank(message = "A quantidade não pode estar vazio")
-  @JsonProperty("quantidadeJogos")
-  Integer quantidadeJogos;
-)
-{
-
-}
+public record DraftSugestaoRequestDto(
+  @JsonProperty("time_player") String timePlayer,
+  @JsonProperty("bans_player") List<String> bansPlayer,
+  @JsonProperty("picks_player") List<String> picksPlayer,
+  @JsonProperty("time_ia") String timeIA,
+  @JsonProperty("bans_ia") List<String> bansIA,
+  @JsonProperty("picks_ia") List<String> picksIA,
+  @JsonProperty("fearless") List<String> fearless,
+  @JsonProperty("is_first_pick") boolean isFirstPick,
+  @JsonProperty("fase") String fase,
+  @JsonProperty("jogador_atual") String jogadorAtual
+) {}

@@ -33,10 +33,14 @@ public class ChampionService {
   }
 
   public boolean existe(String campeao){
-    return this.campeoes.contains(campeao);
+    return this.campeoes.stream()
+        .anyMatch(c -> c.equalsIgnoreCase(campeao));
   }
 
   public String normalizar(String campeao){
-    return campeao.toUpperCase().replace("'", "").replace(" ", "_");
+    return this.campeoes.stream()
+        .filter(c -> c.equalsIgnoreCase(campeao))
+        .findFirst()
+        .orElse(campeao);
   }
 }

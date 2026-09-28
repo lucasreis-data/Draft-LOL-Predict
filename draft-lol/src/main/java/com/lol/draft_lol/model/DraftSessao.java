@@ -1,7 +1,9 @@
 package com.lol.draft_lol.model;
 
-import java.util.List;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
 
 public class DraftSessao {
   private String sessionId;
@@ -17,6 +19,9 @@ public class DraftSessao {
   private List<String> bansUser;
   private List<String> bansIA;
   private List<String> fearless;
+
+  private final Deque<DraftSessao> historico = new ArrayDeque<>();
+  private final Deque<DraftSessao> pilhaRefazer = new ArrayDeque<>();
 
   public DraftSessao(String sessionId, String timeUser, String timeIA, String liga, boolean isFirstPick, int totalJogos) {
     this.sessionId = sessionId;
@@ -46,83 +51,77 @@ public class DraftSessao {
     return copia;
   }
 
-  public String getSessionId() {
-    return sessionId;
+  public boolean campeaoIndisponivel(String campeao) {
+    return fearless.contains(campeao) || bansUser.contains(campeao) || bansIA.contains(campeao);
   }
 
-  public int getTotalJogos() {
-    return totalJogos;
+  public void iniciarNovoJogo(boolean isFirstPick) {
+    this.gameAtual++;
+    this.isFirstPick = isFirstPick;
+    this.faseAtual = Fase.BAN_1;
+    this.picksUser = new ArrayList<>();
+    this.picksIA = new ArrayList<>();
+    this.bansUser = new ArrayList<>();
+    this.bansIA = new ArrayList<>();
   }
 
-  public boolean isFirstPick() {
-    return isFirstPick;
+  public void registrarHistorico() {
+    historico.push(this.clonar());
+    pilhaRefazer.clear(); 
   }
 
-  public String getTimeUser() {
-    return timeUser;
+  public boolean podeDesfazer() {
+    return !historico.isEmpty();
   }
 
-  public String getTimeIA() {
-    return timeIA;
+  public boolean podeRefazer() {
+    return !pilhaRefazer.isEmpty();
   }
 
-  public String getLiga() {
-    return liga;
+  public void desfazer() {
+    if (historico.isEmpty()) return;
+    DraftSessao anterior = historico.pop();
+    pilhaRefazer.push(this.clonar());
+    restaurarDe(anterior);
   }
 
-  public int getGameAtual() {
-    return gameAtual;
+  public void refazer() {
+    if (pilhaRefazer.isEmpty()) return;
+    DraftSessao proximo = pilhaRefazer.pop();
+    historico.push(this.clonar());
+    restaurarDe(proximo);
   }
 
-  public void setGameAtual(int gameAtual) {
-    this.gameAtual = gameAtual;
+  private void restaurarDe(DraftSessao outra) {
+    this.gameAtual = outra.gameAtual;
+    this.faseAtual = outra.faseAtual;
+    this.isFirstPick = outra.isFirstPick;
+    this.picksUser = new ArrayList<>(outra.picksUser);
+    this.picksIA = new ArrayList<>(outra.picksIA);
+    this.bansUser = new ArrayList<>(outra.bansUser);
+    this.bansIA = new ArrayList<>(outra.bansIA);
+    this.fearless = new ArrayList<>(outra.fearless);
   }
 
-  public Fase getFaseAtual() {
-    return faseAtual;
-  }
+  public String getSessionId() { return sessionId; }
+  public int getTotalJogos() { return totalJogos; }
+  public boolean isFirstPick() { return isFirstPick; }
+  public String getTimeUser() { return timeUser; }
+  public String getTimeIA() { return timeIA; }
+  public String getLiga() { return liga; }
+  public int getGameAtual() { return gameAtual; }
+  public Fase getFaseAtual() { return faseAtual; }
+  public void setFaseAtual(Fase faseAtual) { this.faseAtual = faseAtual; }
 
-  public void setFaseAtual(Fase faseAtual) {
-    this.faseAtual = faseAtual;
-  }
+  public List<String> getPicksUser() { return picksUser; }
+  public List<String> getPicksIA() { return picksIA; }
+  public List<String> getBansUser() { return bansUser; }
+  public List<String> getBansIA() { return bansIA; }
+  public List<String> getFearless() { return fearless; }
 
-  public List<String> getPicksUser() {
-    return picksUser;
-  }
-
-  public List<String> getPicksIA() {
-    return picksIA;
-  }
-
-  public List<String> getBansUser() {
-    return bansUser;
-  }
-
-  public List<String> getBansIA() {
-    return bansIA;
-  }
-
-  public List<String> getFearless() {
-    return fearless;
-  }
-
-  public void adicionarPickUser(String campeao) {
-    this.picksUser.add(campeao);
-  }
-
-  public void adicionarPickIA(String campeao) {
-    this.picksIA.add(campeao);
-  }
-
-  public void adicionarBanUser(String campeao) {
-    this.bansUser.add(campeao);
-  }
-
-  public void adicionarBanIA(String campeao) {
-    this.bansIA.add(campeao);
-  }
-
-  public void adicionarFearless(String campeao) {
-    this.fearless.add(campeao);
-  }
+  public void adicionarPickUser(String campeao) { this.picksUser.add(campeao); }
+  public void adicionarPickIA(String campeao) { this.picksIA.add(campeao); }
+  public void adicionarBanUser(String campeao) { this.bansUser.add(campeao); }
+  public void adicionarBanIA(String campeao) { this.bansIA.add(campeao); }
+  public void adicionarFearless(String campeao) { this.fearless.add(campeao); }
 }
