@@ -1632,6 +1632,16 @@ def nota_contexto(nota_geral, nota_condicional, qtd_jogos, k_credibilidade = 6, 
     return nota_final
 
 
+def confianca_amostra(qtd_jogos, k_credbilidade):
+
+    if qtd_jogos <= 0:
+        return 0
+
+    confianca = qtd_jogos / (qtd_jogos + k_credbilidade)
+
+    return confianca
+
+
 def peso_counter_condicional(vitorias, qtd_jogos, win_rate_geral, k_credibilidade = 15, teto_confianca = 0.90):
 
     if qtd_jogos <= 0:
@@ -1667,7 +1677,6 @@ def resposta_camp(camp, inimigo): # vOu mudar o nome
     return peso_resposta
     
 
-
 def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks_totais, time_tem_p1_no_jogo, retornar_lista = False, modelo = None):
 
     from random import choices
@@ -1700,22 +1709,16 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
     todos_camps_time = set(pool_do_time["champion"].unique())
 
     e_primeiro_pick_time = len(picksTime1) == 0
-    # id_time = cod_time.transform([time1])[0]
-    # id_opp = cod_time.transform([time2])[0]
 
     id_time = cod_time_seguro(time1)
     id_opp = cod_time_seguro(time2)
 
     valor_posse_p1 = 1.0 if time_tem_p1_no_jogo else 0.0
 
-    # picks_time1_nums = cod_camp.transform(picksTime1).tolist() if len(picksTime1) > 0 else []
-
     picks_time1_nums = cod_camp_seguro(picksTime1)
 
     while len(picks_time1_nums) < 4:
         picks_time1_nums.append(-1)
-    
-    # picks_time2_nums = cod_camp.transform(picksTime2).tolist() if len(picksTime2) > 0 else []
 
     picks_time2_nums = cod_camp_seguro(picksTime2)
 
@@ -1982,8 +1985,8 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
         )
 
     return "Fallback"
-    
-         
+
+
 def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks, time_tem_p1_no_jogo, modelo = None):
 
     global prioridade_historica, ban_fase1_fp, ban_fase1_lp, total_fp, total_lp, ban_contra_fp, ban_contra_lp, total_contra_fp, total_contra_lp, bans_vs_fp, bans_vs_lp, jogos_vs_fp, jogos_vs_lp
@@ -2001,22 +2004,15 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
     if not rotas_vagas_adv:
         return df_meta[~df_meta.index.isin(proibidos)].sort_values(by = "ban_rate", ascending = False).index[0]
 
-    # id_inimigo = cod_time.transform([time2])[0]
-    # id_aliado = cod_time.transform([time1])[0]
-
     id_inimigo = cod_time_seguro(time2)
     id_aliado = cod_time_seguro(time1)
 
     posse_p1_adv = 0.0 if time_tem_p1_no_jogo else 1.0
 
-    # picks_time2_nums = cod_camp.transform(picksTime2).tolist() if len(picksTime2) > 0 else []
-
     picks_time2_nums = cod_camp_seguro(picksTime2)
 
     while len(picks_time2_nums) < 4:
         picks_time2_nums.append(-1)
-
-    # picks_time1_nums = cod_camp.transform(picksTime1).tolist() if len(picksTime1) > 0 else []
 
     picks_time1_nums = cod_camp_seguro(picksTime1)
 
@@ -2132,7 +2128,8 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
             if time2 in prioridade_historica.index:
                 champ_geral_adv = jogados_rota_adv.get(camp, 0)
                 prio_norma_adv = pool_normalizada_adv.get(camp, 0)
-                prio_inimigo = nota_contexto(champ_geral_adv, prio_norma_adv, peso_pool_adv, 8, 0.30)
+
+                prio_inimigo = nota_contexto(champ_geral_adv, prio_norma_adv, peso_pool_adv, 8, 0.25)
 
             if time1 in prioridade_historica.index:
                 prio_aliado = prioridade_historica.loc[time1].get(camp, 0)
@@ -2145,21 +2142,35 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
             total_jogos_aliado = total_aliado_ctx.get(time1, 1)
             contagem_bans = historico_aliado.get((time1, camp), 0)
+            
+            nota_bans_champ = bans_champ_vs.get((time1, time2), {}).get(camp, 0)
+            jogos_confronto = bans_vs_adv.get((time1, time2), 0)
+            
             bonus_historico_aliado = 0
 
-            if total_jogos_aliado > minimo_exposicao:
-                nota_geral_ban = contagem_bans / total_jogos_aliado
-                nota_bans_champ = bans_champ_vs.get((time1, time2), {}).get(camp, 0)
-                bans_confronto = bans_vs_adv.get((time1, time2), 0)
-                bonus_historico_aliado = min(nota_contexto(nota_geral_ban, nota_bans_champ, bans_confronto), 0.25)
+            if total_jogos_aliado > 0:
+
+                ban_rate_bruto = contagem_bans / total_jogos_aliado
+                conf_hist = confianca_amostra(total_jogos_aliado, 6)
+                nota_geral_ban = ban_rate_bruto * conf_hist
+
+                bonus_historico_aliado = min(nota_contexto(nota_geral_ban, nota_bans_champ, jogos_confronto, k_credibilidade = 8, teto_confianca = 0.25), 0.30)
 
             bonus_ameaca_oculta = 0
 
             total_jogos_contra = total_contra_ctx.get(time2, 1)
             contagem_bans_contra = historico_contra.get((time2, camp), 0)
+            bans_confronto = nota_bans_champ * jogos_confronto
 
-            if total_jogos_contra >= minimo_exposicao:
-                bonus_ameaca_oculta = min(contagem_bans_contra / total_jogos_contra, 0.25)
+            bans_resto = max(contagem_bans_contra - bans_confronto, 0)
+            jogos_resto = max(total_jogos_contra - jogos_confronto, 0)
+
+            if jogos_resto > 0:
+
+                ban_rate_bruto = bans_resto / jogos_resto 
+                conf_ameaca = confianca_amostra(jogos_resto, 6)
+                
+                bonus_ameaca_oculta = min(ban_rate_bruto * conf_ameaca, 0.25)
 
             bonus_combo_adv = 0
 
@@ -2192,11 +2203,11 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
             else:
 
-                peso_inimigo = 0.35 if not time_tem_p1_no_jogo else 0.30
-                peso_historico = 0.15 if not time_tem_p1_no_jogo else 0.20
+                peso_inimigo = 0.22 if not time_tem_p1_no_jogo else 0.20
+                peso_historico = 0.23 if not time_tem_p1_no_jogo else 0.25
 
                 score_perigo = (
-                    (prio_inimigo * peso_inimigo) + (pref_ia * 0.15) + (meta_ban * 0.10) +
+                    (prio_inimigo * peso_inimigo) + (pref_ia * 0.17) + (meta_ban * 0.08) +
                     (bonus_historico_aliado * peso_historico) + (bonus_ameaca_oculta * 0.30)
                     
                 )
@@ -2209,7 +2220,6 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
         return melhor_ban
     
     return df_meta[~df_meta.index.isin(proibidos)].sort_values(by = "ban_rate", ascending = False).index[0]
-
 
 # %%
 def ordemPicksBans(timeFP, timeLP, jogos, picks = None):
