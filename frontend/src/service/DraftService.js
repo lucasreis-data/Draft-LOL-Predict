@@ -65,6 +65,29 @@ export const draftService = {
         const response = await fetch (`${BASE_URL}/sessao?sessionId=${id}`)
         const dadosResposta = await response.json()
         return dadosResposta.jogadorAtual
-        
+    },
+    desfazer: async(dados) => {
+        const resposta = await fetch(`${BASE_URL}/desfazer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados)
+        });
+        return await resposta.json();
+    },
+    refazer: async(dados) => {
+        const resposta = await fetch(`${BASE_URL}/refazer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados)
+        });
+        return await resposta.json();
+    },
+    reiniciarJogo: async(dados) => {
+        const resposta = await fetch(`${BASE_URL}/Reiniciar-jogo`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados)
+        });
+        return await resposta.json();
     }
 }
