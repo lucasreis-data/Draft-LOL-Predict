@@ -5,6 +5,7 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public record DraftSugestaoRequestDto(
+  @JsonProperty("liga") String liga,
   @JsonProperty("time_player") String timePlayer,
   @JsonProperty("bans_player") List<String> bansPlayer,
   @JsonProperty("picks_player") List<String> picksPlayer,

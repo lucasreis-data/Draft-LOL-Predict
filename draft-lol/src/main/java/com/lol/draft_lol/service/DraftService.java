@@ -200,7 +200,7 @@ public class DraftService {
 
   private DraftSugestaoRequestDto montarRequest(DraftSessao sessao, String jogadorAtual) {
     return new DraftSugestaoRequestDto(
-      sessao.getTimeUser(), sessao.getBansUser(), sessao.getPicksUser(),
+      sessao.getLiga(), sessao.getTimeUser(), sessao.getBansUser(), sessao.getPicksUser(),
       sessao.getTimeIA(), sessao.getBansIA(), sessao.getPicksIA(),
       sessao.getFearless(), sessao.isFirstPick(),
       sessao.getFaseAtual().name(), jogadorAtual
