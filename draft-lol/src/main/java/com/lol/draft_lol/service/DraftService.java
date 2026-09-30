@@ -78,6 +78,17 @@ public class DraftService {
     return montarResposta(sessao);
   }
 
+  public Object reiniciarJogo(DraftSugestaoDto dados) {
+    return comTrava(dados.sessionId(), () -> {
+      DraftSessao sessao = buscarSessao(dados.sessionId());
+      sessao.registrarHistorico();     
+      sessao.reiniciarJogoAtual();
+      draftSessaoRepository.salvar(sessao);
+      return montarResposta(sessao);
+    });
+  }
+
+
   public Object alterarDraft(DraftAcaoDto dados) {
     return comTrava(dados.sessionId(), () -> {
       DraftSessao sessao = buscarSessao(dados.sessionId());

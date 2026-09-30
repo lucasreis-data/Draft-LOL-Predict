@@ -19,6 +19,7 @@ public class DraftSessao {
   private List<String> bansUser;
   private List<String> bansIA;
   private List<String> fearless;
+  private List<String> fearlessInicioJogo = new ArrayList<>();
 
   private final Deque<DraftSessao> historico = new ArrayDeque<>();
   private final Deque<DraftSessao> pilhaRefazer = new ArrayDeque<>();
@@ -48,6 +49,7 @@ public class DraftSessao {
     copia.bansUser = new ArrayList<>(this.bansUser);
     copia.bansIA = new ArrayList<>(this.bansIA);
     copia.fearless = new ArrayList<>(this.fearless);
+    copia.fearlessInicioJogo = new ArrayList<>(this.fearlessInicioJogo);
     return copia;
   }
 
@@ -63,6 +65,16 @@ public class DraftSessao {
     this.picksIA = new ArrayList<>();
     this.bansUser = new ArrayList<>();
     this.bansIA = new ArrayList<>();
+    this.fearless = new ArrayList<>(fearlessInicioJogo);
+  }
+
+  public void reiniciarJogoAtual() {
+    this.faseAtual = Fase.BAN_1;
+    this.picksUser = new ArrayList<>();
+    this.picksIA = new ArrayList<>();
+    this.bansUser = new ArrayList<>();
+    this.bansIA = new ArrayList<>();
+    this.fearless = new ArrayList<>(fearlessInicioJogo);
   }
 
   public void registrarHistorico() {
@@ -101,6 +113,7 @@ public class DraftSessao {
     this.bansUser = new ArrayList<>(outra.bansUser);
     this.bansIA = new ArrayList<>(outra.bansIA);
     this.fearless = new ArrayList<>(outra.fearless);
+    this.fearlessInicioJogo = new ArrayList<>(outra.fearlessInicioJogo);
   }
 
   public String getSessionId() { return sessionId; }

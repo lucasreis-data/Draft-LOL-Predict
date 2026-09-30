@@ -113,7 +113,16 @@ public class DraftController {
       return ResponseEntity.badRequest().body(e.getMessage());
     }
   }
-
+  @PostMapping("/draft/Reiniciar-jogo")
+  public ResponseEntity<Object> reiniciarJogo(@RequestBody @Valid DraftSugestaoDto request) {
+    try {
+      return ResponseEntity.ok(draftService.reiniciarJogo(request));
+    } catch (AcaoEmAndamentoException e) {
+      return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(e.getMessage());
+    } catch (IllegalArgumentException e) {
+      return ResponseEntity.badRequest().body(e.getMessage());
+    }
+  }
 
   @PostMapping("/draft/Prox-jogo")
 public ResponseEntity<Object> proxJogo(@RequestBody @Valid DraftProxJogoDto request) {
