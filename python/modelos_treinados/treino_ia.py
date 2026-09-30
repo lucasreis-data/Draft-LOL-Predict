@@ -10,7 +10,7 @@ os.chdir(pasta_python)
 
 import cblol
 
-ligas = ["CBLOL", "LCK", "LPL", "LEC", None]
+ligas = ["CBLOL", "LCK", "LPL", "LEC", "LCS", "LCP", None]
 
 for l in ligas:
     print(f"\nTreinamento liga: {l if l else 'Geral (Sem bônus)'}")

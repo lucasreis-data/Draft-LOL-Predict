@@ -16,3 +16,4 @@ python/.venv/
 python/__pycache__/
 python/cblolQ.py
 python/modelos_treinados/*.joblib
+python/cache_dados/*.joblib

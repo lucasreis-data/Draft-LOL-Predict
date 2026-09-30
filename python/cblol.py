@@ -3,16 +3,53 @@
 
 # %%
 import pandas as pd
+import joblib
+import os
 
-tabela_2025 = pd.read_csv("2025_LoL_esports_match_data_from_OraclesElixir.csv")
-tabela_2026 = pd.read_csv("2026_LoL_esports_match_data_from_OraclesElixir.csv")
+try:
+    pasta_raiz = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    pasta_raiz = os.getcwd()
 
-tabela_2025["year"] = 2025
-tabela_2026["year"] = 2026
+pasta_csv = os.path.join(pasta_raiz, "csv")
+pasta_cache = os.path.join(pasta_raiz, "cache_dados")
 
-tabela = pd.concat([tabela_2025, tabela_2026], ignore_index = True)
+os.makedirs(pasta_cache, exist_ok = True)
 
-#display(tabela)
+datasets = {
+    2025 : "2025_LoL_esports_match_data_from_OraclesElixir.csv",
+    2026 : "2026_LoL_esports_match_data_from_OraclesElixir.csv"
+}
+
+def carregar_datasets(ano, nome):
+
+    caminho_csv = os.path.join(pasta_csv, nome)
+    caminho_cache = os.path.join(pasta_cache, f"tabela_{nome}.joblib")
+
+    cache_valido = os.path.exists(caminho_cache) and os.path.getmtime(caminho_cache) >= os.path.getmtime(caminho_csv)
+
+    if cache_valido:
+        return joblib.load(caminho_cache)
+
+    print(f"[Cache] Csv de {ano} é novo ou mudou -> \033[32mReprocessando\033[m")
+
+    df_dados = pd.read_csv(caminho_csv)
+    df_dados["year"] = ano
+
+    joblib.dump(df_dados, caminho_cache)
+
+    return df_dados
+
+
+tabelas = []
+
+for ano, arquivo in datasets.items():
+
+    df_arq = carregar_datasets(ano, arquivo)
+
+    tabelas.append(df_arq)
+
+tabela = pd.concat(tabelas, ignore_index = True)
 
 # %%
 novos_nomes = {
@@ -22,16 +59,15 @@ novos_nomes = {
 
 tabela["league_unificada"] = tabela["league"].replace(novos_nomes)
 
-print("Times 2025")
-print(tabela['league'].unique())
+print("Ligas")
 
-print()
+print(tabela['league'].unique(), "\n")
 print(tabela.columns.tolist())
-print()
 
-print("Times 2026\n")
-print(tabela_2026["league"].unique())
+# print("Times 2026\n")
+# print(tabela_2026["league"].unique())
 
+#display(tabela)
 
 # %%
 def obter_times_liga(lista_liga = "CBLOL", year = None):
@@ -41,6 +77,9 @@ def obter_times_liga(lista_liga = "CBLOL", year = None):
   
   if isinstance(lista_liga, str):
     lista_liga = [lista_liga]
+
+  if any(liga.strip().upper() == "GERAL" for liga in lista_liga):
+     return sorted(tabela_final["teamname"].unique().tolist())
   
   todos_times = []
 
@@ -124,9 +163,9 @@ tabela_final["patch_num"] = ((tabela_final["patch"] * 100).round().fillna(0).ast
 #display(tabela_final)
 
 # %%
-def filtar_dados(liga = None, year = None):
+def filtar_dados(liga = None, year = None, split = None, patch = None):
 
-    df_meta_liga = tabela_final.copy()
+    df_meta_liga = tabela_final.copy() # Avaliar 
 
     if year is not None:
         df_meta_liga = df_meta_liga[df_meta_liga["year"] == year]
@@ -135,6 +174,18 @@ def filtar_dados(liga = None, year = None):
         if isinstance(liga, str):
             liga = [liga]
         df_meta_liga = df_meta_liga[df_meta_liga["league_unificada"].isin(liga)]
+
+    if split is not None:
+        if isinstance(split, str):
+            split = [split]
+        df_meta_liga = df_meta_liga[df_meta_liga["split"].isin(split)]
+
+    if patch is not None:
+        if isinstance(patch, (int, str)):
+            patch = [patch]
+        patch = [int(p) for p in patch]
+        
+        df_meta_liga = df_meta_liga[df_meta_liga["patch_num"].isin(patch)]
 
     return df_meta_liga
 
@@ -145,7 +196,7 @@ jogos_por_liga = tabela_final.groupby("league")["gameid"].nunique()
 print(jogos_por_liga.sort_values(ascending = False))
 
 # %%
-tabela_liga_ativa = filtar_dados(liga = "CBLOL", year = 2026)
+tabela_liga_ativa = filtar_dados(liga = None, year = 2026)
 
 def construir_df_meta(tabela_liga = None):
 
@@ -204,9 +255,11 @@ def construir_df_meta(tabela_liga = None):
 df_meta = construir_df_meta(tabela_liga_ativa)
 
 # %%
-def analisar_estrategias(nome_time, ano_analise = None):
+def analisar_estrategias(nome_time, ano_analise = None, splits = None, patches = None ):
+
+    tabela_base = filtar_dados(liga = None, year = ano_analise, split = splits, patch = patches)
     
-    df_filtro = tabela_final[(tabela_final["teamname"] == nome_time) & (tabela_final["position"] == "team") & (tabela_final["year"] == ano_analise)]
+    df_filtro = tabela_base[(tabela_base["teamname"] == nome_time) & (tabela_base["position"] == "team") & (tabela_base["year"] == ano_analise)]
 
     if df_filtro.empty:
         print(f"Time {nome_time} não encontrado para o ano de {ano_analise}")
@@ -216,13 +269,13 @@ def analisar_estrategias(nome_time, ano_analise = None):
     ids_fp = df_filtro[df_filtro["firstPick"] == 1]["gameid"].unique()
     ids_lp = df_filtro[df_filtro["firstPick"] == 0]["gameid"].unique()
 
-    df_players_geral = tabela_final[(tabela_final["teamname"] == nome_time) & (tabela_final["year"] == ano_analise) & (tabela_final["position"] != "team")]
+    df_players_geral = tabela_base[(tabela_base["teamname"] == nome_time) & (tabela_base["year"] == ano_analise) & (tabela_base["position"] != "team")]
     df_players_fp = df_players_geral[df_players_geral["gameid"].isin(ids_fp)]
     df_players_lp = df_players_geral[df_players_geral["gameid"].isin(ids_lp)]
 
-    df_adv_geral = tabela_final[(tabela_final["gameid"].isin(ids_todos) & (tabela_final["teamname"] != nome_time) & (tabela_final["position"] == "team"))]
-    df_adv_fp = tabela_final[(tabela_final["gameid"].isin(ids_fp) & (tabela_final["teamname"] != nome_time) & (tabela_final["position"] == "team"))]
-    df_adv_lp = tabela_final[(tabela_final["gameid"].isin(ids_lp) & (tabela_final["teamname"] != nome_time) & (tabela_final["position"] == "team"))]
+    df_adv_geral = tabela_base[(tabela_base["gameid"].isin(ids_todos) & (tabela_base["teamname"] != nome_time) & (tabela_base["position"] == "team"))]
+    df_adv_fp = tabela_base[(tabela_base["gameid"].isin(ids_fp) & (tabela_base["teamname"] != nome_time) & (tabela_base["position"] == "team"))]
+    df_adv_lp = tabela_base[(tabela_base["gameid"].isin(ids_lp) & (tabela_base["teamname"] != nome_time) & (tabela_base["position"] == "team"))]
 
     def processar_first_pick(df_contexto):
 
@@ -237,7 +290,7 @@ def analisar_estrategias(nome_time, ano_analise = None):
             "pick_rate": (stats.values / total_jogos_fp * 100).round(1)
         }) 
 
-        return df_resumo_fp.head(10).to_dict(orient = "records")
+        return df_resumo_fp.head(60).to_dict(orient = "records")
 
 
     def processar_picks(df_contexto):
@@ -252,7 +305,7 @@ def analisar_estrategias(nome_time, ano_analise = None):
         stats["pick_rate"] = (stats["picks"] / total_jogos * 100).round(1)
         stats["win_rate"] = (stats["vitorias"] / stats["picks"] * 100).round(1)
         stats.index.name = "champion"
-        stats = stats.sort_values("picks", ascending = False).head(10)
+        stats = stats.sort_values("picks", ascending = False).head(60)
 
         return stats.reset_index().to_dict(orient = "records")
 
@@ -272,7 +325,7 @@ def analisar_estrategias(nome_time, ano_analise = None):
             "rate": (bans_f1.values / total_jogos * 100).round(1)
         }).fillna(0)
         
-        return df_bans_fase1.head(10).to_dict(orient = "records")
+        return df_bans_fase1.head(60).to_dict(orient = "records")
 
 
     def processar_bans_totais(df_contexto):
@@ -291,7 +344,7 @@ def analisar_estrategias(nome_time, ano_analise = None):
             "rate": (bans_totais.values / total_jogos * 100).round(1)
         }).fillna(0)
 
-        return df_bans_totais.sort_values("bans_totais", ascending=False).head(10).to_dict(orient="records")
+        return df_bans_totais.sort_values("bans_totais", ascending=False).head(60).to_dict(orient="records")
 
 
     def montar_bloco(df_picks, df_filtro, df_adv, titulo, jogos):
@@ -341,7 +394,7 @@ def analisar_estrategias(nome_time, ano_analise = None):
                 stats["pick_rate"] = (stats["picks"] / total * 100).round(1)
                 stats["win_rate"] = (stats["vitorias"] / stats["picks"] * 100).round(1)
 
-                stats = stats.sort_values("picks", ascending = False).head(10)
+                stats = stats.sort_values("picks", ascending = False).head(60)
                 stats.index.name = "champion"
                 
                 players.append({
@@ -745,17 +798,9 @@ y = tabela_ia["champion_num"]
 
 # modelo_ia.fit(X, y, sample_weight = tabela_ia["peso_final"].values)
 
-print(f"IA treinada com sucesso! Liga ativa {liga_ativa} | Linhas de treino: {len(tabela_ia)}")
+# print(f"IA treinada com sucesso! Liga ativa {liga_ativa} | Linhas de treino: {len(tabela_ia)}")
 
 # %%
-import os
-import joblib
-
-try:
-    pasta_raiz = os.path.dirname(os.path.abspath(__file__))
-except NameError:
-    pasta_raiz = os.getcwd()
-
 caminho_encoders = os.path.join(pasta_raiz, "modelos_treinados", "encoders.joblib")
 
 if os.path.exists(caminho_encoders):
@@ -769,110 +814,281 @@ if os.path.exists(caminho_encoders):
         print("Diferença encontrada: ", classes_atuais.symmetric_difference(classes_salvas))
 
 # %%
-prioridade_historica = tabela_liga_ativa.groupby(["teamname", "champion"]).size().unstack(fill_value = 0)
-prioridade_historica = prioridade_historica.div(prioridade_historica.sum(axis = 1), axis = 0).fillna(0)
+def calcular_decaimento(meia_vida_dias = 45):
 
-# Historico
+    return np.log(2) / meia_vida_dias
 
-df_agrupados = tabela_liga_ativa.groupby([
-    "gameid", "teamname", "result", "firstPick", "game",
-    "ban1", "ban2", "ban3", "pick1", "pick2",
-    "pick3", "ban4", "ban5", "pick4", "pick5",
-]).size().reset_index() 
 
-df_confronto = pd.merge(df_agrupados, df_agrupados, on = ["gameid", "game"], suffixes = ("_time1", "_time2"))
-df_confronto = df_confronto[df_confronto["teamname_time1"] != df_confronto["teamname_time2"]]
-df_confronto = df_confronto.drop_duplicates(subset = ["gameid"], keep = "first")
+def calcular_peso_tempo(df, colunas_time, taxa_decaimento, reducao_por_jogo = 0.10):
 
-#display(df_confronto)
+    df = df.copy()
 
-# Prioridade FP
+    df["ultima_data"] = df.groupby(colunas_time)["date"].transform("max")
+    dias_passados = (df["ultima_data"] - df["date"]).dt.days
+    
+    peso_data = np.exp(- taxa_decaimento * dias_passados)
+    peso_jogo = 1.0 -(df["game"] - 1) * reducao_por_jogo
 
-p1_t1 = df_confronto[df_confronto["firstPick_time1"] == 1][["teamname_time1", "pick1_time1"]].rename(
-    columns = {"teamname_time1": "teamname", "pick1_time1": "pick1"}
-)
-p1_t2 = df_confronto[df_confronto["firstPick_time2"] == 1][["teamname_time2", "pick1_time2"]].rename(
-    columns = {"teamname_time2": "teamname", "pick1_time2": "pick1"}
-)
+    df["peso_tempo"] = peso_data * peso_jogo
 
-df_p1_unificado = pd.concat([p1_t1, p1_t2])
+    return df
 
-prioridade_p1 = df_p1_unificado.groupby(["teamname", "pick1"]).size().unstack(fill_value = 0)
-prioridade_p1 = prioridade_p1.div(prioridade_p1.sum(axis = 1), axis = 0).fillna(0)
 
-# Prioridade Bans_Fase1
+def confronto_valido(tabela_liga_ativa):
 
-tabela_times_liga = tabela_liga_ativa[tabela_liga_ativa["position"] == "team"]
+    df_times = tabela_liga_ativa[tabela_liga_ativa["position"] == "team"].copy()
 
-# Aliado
+    times_por_jogo = df_times.groupby("gameid")["teamname"].transform("nunique")
+    jogos_validos = df_times[times_por_jogo == 2]
 
-ban_fase1_fp = {}
-ban_fase1_lp = {}
-total_fp = {}
-total_lp = {}
+    confronto = jogos_validos.merge(jogos_validos, on = "gameid", suffixes = ("", "_adv"))
+    confronto = confronto[confronto["teamname"] != confronto["teamname_adv"]]
 
-# Adversario
+    return confronto
 
-ban_contra_fp = {}
-ban_contra_lp = {}
-total_contra_fp = {}
-total_contra_lp = {}
 
-for gameid, jogo_equipe in tabela_times_liga.groupby("gameid"):
+def mapear_oponentes(tabela):
 
-    equipes = jogo_equipe["teamname"].unique()
+    confronto = confronto_valido(tabela)
 
-    if len(equipes) != 2:
-        continue
+    return confronto[["gameid", "teamname", "teamname_adv"]]
 
-    time_a = equipes[0]
-    time_b = equipes[1]
 
-    for equipe in equipes:
+def ordernar_times_alfa(tabela):
 
-        adversario = time_b if equipe == time_a else time_a
+    tabela = tabela.copy()
 
-        dados_time = jogo_equipe[jogo_equipe["teamname"] == equipe]
-        dados_adv = jogo_equipe[jogo_equipe["teamname"] == adversario]
+    primeiro_time_alfa = np.where(tabela["teamname"] < tabela["teamname_adv"], tabela["teamname"], tabela["teamname_adv"])
+    segundo_time_alfa = np.where(tabela["teamname"] < tabela["teamname_adv"], tabela["teamname_adv"], tabela["teamname"])
 
-        tem_fp = dados_time["firstPick"].values[0] == 1
+    tabela["partida"] = primeiro_time_alfa + "|" + segundo_time_alfa
 
-        ban_f1 = dados_time[["ban1", "ban2", "ban3"]].values.flatten().tolist()
-        bans_adv = dados_adv[["ban1", "ban2", "ban3", "ban4", "ban5"]].values.flatten()
+    return tabela
 
-        if tem_fp:
 
-            total_fp[equipe] = total_fp.get(equipe, 0) + 1
-        
-            for ban in ban_f1:
+def processar_picks(tabela_liga_ativa, meia_vida_dias = 45):
 
-                if pd.notna(ban):
-                    ban_fase1_fp[(equipe, ban)] = ban_fase1_fp.get((equipe, ban), 0) + 1
+    decaimento = calcular_decaimento(meia_vida_dias)
 
+    jogadores = tabela_liga_ativa[tabela_liga_ativa["position"] != "team"].copy()
+    jogadores["date"] = pd.to_datetime(jogadores["date"])
+
+    jogadores_peso = calcular_peso_tempo(jogadores, "teamname", decaimento)
+
+    peso_champ = jogadores_peso.groupby(["teamname", "champion"])["peso_tempo"].sum()
+    peso_total_jogos = jogadores_peso.groupby("teamname")["peso_tempo"].sum()
+
+    prioridade_historica = peso_champ.div(peso_total_jogos, level = "teamname")
+    prioridade_historica = prioridade_historica.unstack(fill_value = 0).round(4)
+
+    # Prioridade FP
+
+    confronto = confronto_valido(tabela_liga_ativa)
+    confronto_fp = confronto[confronto["firstPick"] == 1].copy() 
+
+    confronto_fp["date"] = pd.to_datetime(confronto_fp["date"])
+
+    confronto_fp = calcular_peso_tempo(confronto_fp, "teamname", decaimento)
+
+    peso_champ_fp = confronto_fp.groupby(["teamname", "pick1"])["peso_tempo"].sum()
+    peso_fp_time = confronto_fp.groupby("teamname")["peso_tempo"].sum()
+
+    prioridade_p1 = peso_champ_fp.div(peso_fp_time, level = "teamname")
+    prioridade_p1 = prioridade_p1.unstack(fill_value = 0).round(4)
+
+    # Confronto direto
+
+    mapa_adv = mapear_oponentes(tabela_liga_ativa)
+
+    jogos_confronto = jogadores.merge(mapa_adv, on = ["gameid", "teamname"], how = "inner")
+    jogos_confronto = ordernar_times_alfa(jogos_confronto)
+    jogos_confronto = calcular_peso_tempo(jogos_confronto, "partida", decaimento)
+
+    campeao_peso = jogos_confronto.groupby(["teamname", "teamname_adv", "champion"])["peso_tempo"].sum()
+    confronto_total = jogos_confronto.groupby(["teamname", "teamname_adv"])["peso_tempo"].sum()
+
+    jogos_contra_adv = confronto_total.to_dict()
+
+    picks_confronto = {}
+    taxa_camp = (campeao_peso / confronto_total).round(4)
+
+    for (time, adv, champ), taxa in taxa_camp.items():
+        duelo = (time, adv)
+
+        if duelo not in picks_confronto:
+            picks_confronto[duelo] = {}
+
+        picks_confronto[duelo][champ] = taxa
+
+    jogos_confronto_fp = ordernar_times_alfa(confronto_fp)
+    jogos_confronto_fp = calcular_peso_tempo(jogos_confronto_fp, "partida", decaimento)
+
+    campeao_fp_peso = jogos_confronto_fp.groupby(["teamname", "teamname_adv", "pick1"])["peso_tempo"].sum()
+    tot_fp_confronto =  jogos_confronto_fp.groupby(["teamname", "teamname_adv"])["peso_tempo"].sum()
+
+    total_fp_confronto = tot_fp_confronto.to_dict()
+
+    picks_fp_confronto = {}
+    taxa_camp_fp = (campeao_fp_peso / tot_fp_confronto).round(4)
+
+    for (nome_time, nome_adv, champ), taxa in taxa_camp_fp.items():
+        times = (nome_time, nome_adv)
+
+        if times not in picks_fp_confronto:
+            picks_fp_confronto[times] = {}
+
+        picks_fp_confronto[times][champ] = taxa
+
+    return {
+        "prioridade_historica" : prioridade_historica,
+        "prioridade_p1" : prioridade_p1,
+        "jogos_contra_adv" : jogos_contra_adv,
+        "picks_confronto" : picks_confronto,
+        "total_fp_confronto" : total_fp_confronto,
+        "picks_fp_confronto" : picks_fp_confronto,
+        "peso_total_jogos" : peso_total_jogos
+    }
+
+
+# Prioridade bans_Fase1
+
+def _contagem_bans_peso(df, alvo_cols, grupo_cols):
+
+    if df.empty:
+        return pd.Series(dtype = int)
+    
+    bans = df.melt(
+        id_vars = grupo_cols + ["peso_tempo", "gameid"],
+        value_vars = alvo_cols,
+        value_name = "campeao_banido"
+    ).dropna(subset = ["campeao_banido"])
+
+    if bans.empty:
+        return pd.Series(dtype = int)
+
+    bans_time = grupo_cols + ["campeao_banido"]
+    bans_peso = bans.groupby(bans_time)["peso_tempo"].sum()
+
+    return bans_peso
+
+
+def identificar_first_pick(bans_agrupados, valor_fp):
+
+    if bans_agrupados.empty:
+        return {}
+
+    status_fp = bans_agrupados.index.get_level_values("firstPick")
+
+    if valor_fp not in status_fp:
+        return {}
+
+    return bans_agrupados.xs(valor_fp, level = "firstPick").to_dict()
+
+
+def processar_bans(tabela_liga_ativa, meia_vida_dias = 45):
+
+    decaimento = calcular_decaimento(meia_vida_dias)
+
+    jogos_time = confronto_valido(tabela_liga_ativa)
+    jogos_time["date"] = pd.to_datetime(jogos_time["date"])
+    jogos_time = calcular_peso_tempo(jogos_time, "teamname", decaimento)
+
+    status_fp = ["teamname", "firstPick"]
+
+    peso_por_grupo = jogos_time.groupby(status_fp)["peso_tempo"].sum()
+    total_fp = identificar_first_pick(peso_por_grupo, 1)
+    total_lp = identificar_first_pick(peso_por_grupo, 0)
+
+    bans_time = _contagem_bans_peso(jogos_time, ["ban1", "ban2", "ban3"], status_fp)
+
+    ban_fase1_fp = identificar_first_pick(bans_time, 1)
+    ban_fase1_lp = identificar_first_pick(bans_time, 0)
+
+    bans_adv = _contagem_bans_peso(jogos_time, ["ban1_adv", "ban2_adv", "ban3_adv", "ban4_adv", "ban5_adv"], status_fp)
+
+    ban_contra_fp = identificar_first_pick(bans_adv, 1)
+    ban_contra_lp = identificar_first_pick(bans_adv, 0)
+
+    confronto = confronto_valido(tabela_liga_ativa)
+    confronto_adv = ordernar_times_alfa(confronto)
+    confronto_adv["date"] = pd.to_datetime(confronto_adv["date"])
+    confronto_adv = calcular_peso_tempo(confronto_adv, "partida", decaimento)
+
+    status_fp_jogo = ["teamname", "teamname_adv", "firstPick"]
+
+    bans_confronto = _contagem_bans_peso(confronto_adv, ["ban1", "ban2", "ban3", "ban4", "ban5"], status_fp_jogo)
+    peso_confronto = confronto_adv.groupby(status_fp_jogo)["peso_tempo"].sum()
+
+    bans_vs_fp = {}
+    bans_vs_lp = {}
+
+    taxa_ban_vs = (bans_confronto / peso_confronto).round(4) 
+
+    for (time, adv, fp_status, champ), taxa in taxa_ban_vs.items():
+        duelo = (time, adv)
+
+        if fp_status == 1:
+            lado = bans_vs_fp
         else:
-            total_lp[equipe] = total_lp.get(equipe, 0) + 1
+            lado = bans_vs_lp
 
-            for ban in ban_f1:
+        if duelo not in lado:
+            lado[duelo] = {}
 
-                if pd.notna(ban):
-                    ban_fase1_lp[(equipe, ban)] = ban_fase1_lp.get((equipe, ban), 0) + 1
+        lado[duelo][champ] = taxa
 
-        if tem_fp:
-            total_contra_fp[equipe] = total_contra_fp.get(equipe, 0) + 1
+    jogos_vs_fp = {}
+    jogos_vs_lp = {}
 
-            for ban in bans_adv:
+    for (nome_time, nome_adv, fp_status), jogos in peso_confronto.items():
+        times = (nome_time, nome_adv)
 
-                if pd.notna(ban):
-                    ban_contra_fp[(equipe, ban)] = ban_contra_fp.get((equipe, ban), 0) + 1
-
+        if fp_status == 1:
+            lado_vs = jogos_vs_fp
         else:
-            total_contra_lp[equipe] = total_contra_lp.get(equipe, 0) + 1
+            lado_vs = jogos_vs_lp
 
-            for ban in bans_adv:
+        lado_vs[times] = jogos
 
-                if pd.notna(ban):
-                    ban_contra_lp[(equipe, ban)] = ban_contra_lp.get((equipe, ban), 0) + 1
+    return {
+        "ban_fase1_fp" : ban_fase1_fp,
+        "ban_fase1_lp" : ban_fase1_lp,
+        "total_fp" : total_fp,
+        "total_lp" : total_lp,
+        "ban_contra_fp" : ban_contra_fp,
+        "ban_contra_lp" : ban_contra_lp,
+        "total_contra_fp" : dict(total_fp),
+        "total_contra_lp" : dict(total_lp),
+        "bans_vs_fp" : bans_vs_fp,
+        "bans_vs_lp" : bans_vs_lp,
+        "jogos_vs_fp": jogos_vs_fp,
+        "jogos_vs_lp" : jogos_vs_lp
+    }
 
+picks_stats = processar_picks(tabela_liga_ativa)
+
+prioridade_historica = picks_stats["prioridade_historica"]
+prioridade_p1 = picks_stats["prioridade_p1"]
+jogos_contra_adv = picks_stats["jogos_contra_adv"]
+picks_confronto = picks_stats["picks_confronto"]
+total_fp_confronto = picks_stats["total_fp_confronto"]
+picks_fp_confronto = picks_stats["picks_fp_confronto"]
+peso_total_jogos = picks_stats["peso_total_jogos"]
+
+bans_stats = processar_bans(tabela_liga_ativa)
+
+ban_fase1_fp = bans_stats["ban_fase1_fp"]
+ban_fase1_lp = bans_stats["ban_fase1_lp"]
+total_fp = bans_stats["total_fp"]
+total_lp = bans_stats["total_lp"]
+ban_contra_fp = bans_stats["ban_contra_fp"]
+ban_contra_lp = bans_stats["ban_contra_lp"]
+total_contra_fp = bans_stats["total_contra_fp"]
+total_contra_lp = bans_stats["total_contra_lp"]
+bans_vs_fp = bans_stats["bans_vs_fp"]
+bans_vs_lp = bans_stats["bans_vs_lp"]
+jogos_vs_fp = bans_stats["jogos_vs_fp"]
+jogos_vs_lp = bans_stats["jogos_vs_lp"]
 
 # %%
 caminho_dados_draft = os.path.join(pasta_raiz, "modelos_treinados", "dados_draft.joblib")
@@ -893,6 +1109,8 @@ else:
     contagem_pares = {}
     contagem_exposicao = {}
     contagem_respostas = {}
+
+    ordem_draft = ordem_real.set_index(["gameid", "champion"])["ordem_pick"].to_dict()
 
     for (gameid, teamname), grupo in dados_players_global.groupby(["gameid", "teamname"]):
         champ = grupo["champion"].tolist()
@@ -916,7 +1134,17 @@ else:
             for inimigo in picks_inimigo:
                 contagem_exposicao[inimigo] = contagem_exposicao.get(inimigo, 0) + 1
 
+                ordem_inimigo = ordem_draft.get((gameid, inimigo))
+
+                if ordem_inimigo is None:
+                    continue
+
                 for resposta in picks_aliado:
+                    ordem_resposta = ordem_draft.get((gameid, resposta))
+
+                    if ordem_resposta is None or ordem_resposta <= ordem_inimigo:
+                        continue
+
                     par = (inimigo, resposta)
                     contagem_respostas[par] = contagem_respostas.get(par, 0) + 1
         
@@ -1008,12 +1236,279 @@ matchup_total = dados_draft["matchup_total"]
 matchup_vitorias = dados_draft["matchup_vitorias"]
 
 # %%
+tot_jogos_camp = tabela_final[tabela_final["position"] != "team"].groupby("champion")["gameid"].nunique().to_dict()
+
+def resposta_rate(camp, contra):
+
+    total_contra = tot_jogos_camp.get(contra, 0)
+
+    if total_contra <= 0:
+        return 0
+
+    jogos_contra = contagem_respostas.get((contra, camp), 0)
+    jogos_resposta = jogos_contra / total_contra
+
+    return jogos_resposta
+
+
+def scout_campeao(champ_alvo, tabela = tabela_final, min_jogos = 50):
+
+    def pegar_winrate(matchup):
+        return matchup["win_rate"]
+    
+
+    jogos_alvo = tabela[(tabela["champion"] == champ_alvo) & (tabela["position"] != "team")][["gameid", "teamname"]].drop_duplicates()
+
+    total_jogos = len(jogos_alvo)
+
+    if total_jogos <= 0:
+        return None
+
+    df_duplas = pd.merge(jogos_alvo, tabela[tabela["champion"] != champ_alvo], on = ["gameid", "teamname"])
+
+    rotas_campeao = set()
+    dna_champ = dna_campeoes.get(champ_alvo, {})
+
+    for pos, pct in dna_champ.items():
+
+        if pct > limiar_flex:
+            rotas_campeao.add(pos)
+
+    duplas_por_rota = {}
+
+    for pos in ["top", "jng", "mid", "bot", "sup"]:
+
+        if pos in rotas_campeao:
+            continue
+
+        contagem_campeoes = df_duplas[df_duplas["position"] == pos]["champion"].value_counts().head(20)
+        df_rota = df_duplas[df_duplas["position"] == pos]
+
+        lista_rota = []
+
+        for camp, qtd in contagem_campeoes.items():
+            frequencia_pct = round((qtd / total_jogos) * 100, 1)
+            vitorias_dupla = df_rota[df_rota["champion"] == camp]["result"].sum()
+            win_rate_dupla = round((vitorias_dupla / qtd) * 100, 1)
+
+            lista_rota.append({
+                "champion" : camp,
+                "jogos" : int(qtd),
+                "frequencia": frequencia_pct,
+                "win_rate" : win_rate_dupla
+            })
+
+        duplas_por_rota[pos] = lista_rota
+
+    forte_contra = []
+    fraco_contra = []
+
+    for (camp_a, camp_b), total in matchup_total.items():
+
+        if camp_a == champ_alvo and total > min_jogos:
+            vitorias = matchup_vitorias.get((camp_a, camp_b), 0)
+            win_rate = vitorias / total
+
+            matchup = {
+                "champion" : camp_b,
+                "win_rate" : round(win_rate * 100, 1),
+                "jogos" : int(total),
+            }
+
+            if win_rate >= 0.50: # analisar oq fazer com champs equilibrados
+                matchup["resposta_rate"] = round(resposta_rate(champ_alvo, camp_b) * 100, 1)
+                forte_contra.append(matchup)
+            else:
+                matchup["resposta_rate"]  = round(resposta_rate(camp_b, champ_alvo) * 100, 1)
+                fraco_contra.append(matchup)
+
+    forte_contra = sorted(forte_contra, key = pegar_winrate, reverse = True)
+    fraco_contra = sorted(fraco_contra, key = pegar_winrate)
+
+    return{
+        "campeao" : champ_alvo,
+        "total_jogos" : total_jogos,
+        "rotas_campeao" : sorted(rotas_campeao),
+        "forte_contra" : forte_contra,
+        "fraco_contra" : fraco_contra,
+        "duplas" : duplas_por_rota
+    }
+
+
+def rota_moda(x):
+    return x.mode().iat[0]
+
+
+def ranking_meta(tabela = None, posicao = None, min_jogos = 1):
+
+    if tabela is None:
+        tabela = tabela_liga_ativa
+
+    df_players = tabela[tabela["position"] != "team"]
+    df_teams = tabela[tabela["position"] == "team"]
+
+    total_jogos = tabela["gameid"].nunique()
+    bans_contagem = pd.concat([df_teams[f"ban{i}"] for i in range(1, 6)]).value_counts()
+
+    if total_jogos <= 0:
+        return []
+
+    df_meta_liga = construir_df_meta(tabela)
+
+    stats = df_players.groupby("champion").agg(
+        jogos = ("champion", "count"),
+        vitorias = ("result",  "sum")
+    )
+
+    stats["posicao"] = df_players.groupby("champion")["position"].agg(rota_moda)
+
+    fp_wr = df_players[df_players["firstPick"] == 1].groupby("champion")["result"].mean().mul(100).round(1)
+    fp_jogos = df_players[df_players["firstPick"] == 1].groupby("champion").size()
+
+    lp_wr = df_players[df_players["firstPick"] == 0].groupby("champion")["result"].mean().mul(100).round(1)
+    lp_jogos = df_players[df_players["firstPick"] == 0].groupby("champion").size()
+
+    stats["win_rate"] = (stats["vitorias"] / stats["jogos"] * 100).round(1)
+    stats["pick_rate"] = df_meta_liga["pick_rate"].reindex(stats.index).fillna(0).round(1)
+    stats["ban_rate"] = df_meta_liga["ban_rate"].reindex(stats.index).fillna(0).round(1)
+    stats["bans"] = bans_contagem.reindex(stats.index).fillna(0).astype(int)
+    stats["presence"] = df_meta_liga["presence"].reindex(stats.index).fillna(0).round(1)
+    stats["fp_wr"] = fp_wr.reindex(stats.index).fillna(0).round(1)
+    stats["fp_jogos"] = fp_jogos.reindex(stats.index).fillna(0).astype(int)
+    stats["lp_wr"] = lp_wr.reindex(stats.index).fillna(0)
+    stats["lp_jogos"] = lp_jogos.reindex(stats.index).fillna(0).astype(int)
+
+    stats = stats[stats["jogos"] >= min_jogos]
+
+    if posicao is not None and posicao != "all":
+        stats = stats[stats["posicao"] == posicao]
+
+    stats = stats.sort_values("presence", ascending = False)
+    stats.index.name = "champion"
+
+    return stats.reset_index()[[
+        "champion", "posicao", "win_rate", "pick_rate", "ban_rate", "bans",
+        "presence", "jogos", "fp_wr", "lp_wr", "fp_jogos", "lp_jogos" 
+    ]].to_dict(orient = "records")
+
+
+
+def estatistica_campeao(camp_alvo, tabela = tabela_final):
+
+    lista = ranking_meta(tabela, posicao = None, min_jogos = 1)
+
+    for linha in lista:
+
+        if linha["champion"] == camp_alvo:
+            resultado = dict(linha)
+            resultado.pop("posicao", None)
+
+            return resultado
+
+    return None
+
+
+def top_player_camp(camp_ref, tabela = tabela_final):
+
+    df_camp = tabela[(tabela["champion"] == camp_ref) & (tabela["position"] != "team")]
+
+    if df_camp.empty:
+        return []
+
+    stats = df_camp.groupby("playername").agg(
+        time = ("teamname", "last"),
+        partidas = ("champion", "count"),
+        vitorias = ("result", "sum")
+    )
+
+    stats["win_rate"] = (stats["vitorias"] / stats["partidas"] * 100).round(1)
+
+    stats = stats.sort_values("partidas", ascending = False).head(10)
+    stats.index.name = "player"
+
+    return stats.reset_index()[["player", "time", "partidas", "win_rate"]].to_dict(orient = "records")
+
+
+def avaliar_confrontos(aliados, inimigos):
+
+    matchups = []
+
+    for inimigo in inimigos:
+
+        confrontos = []
+
+        for aliado in aliados:
+
+            jogos = matchup_total.get((aliado, inimigo), 0)
+            vitorias = matchup_vitorias.get((aliado, inimigo), 0)
+            win_rate = round((vitorias / jogos) * 100, 1) if jogos > 0 else None
+
+            confrontos.append({
+                "aliado" : aliado,
+                "jogos" : jogos,
+                "vitorias" : vitorias,
+                "derrotas" : (jogos - vitorias),
+                "win_rate" : win_rate
+            })
+
+        matchups.append({"inimigo" : inimigo, "confrontos" : confrontos})
+
+    respostas = []
+
+    for inimigo in inimigos:
+
+        resp_individuais = []
+
+        for aliado in aliados:
+            resp_individuais.append({"aliado" : aliado, "resposta_rate" : round(resposta_rate(aliado, inimigo) * 100, 1)})
+
+        respostas.append({"inimigo" : inimigo, "respostas" : resp_individuais})
+
+    sinergia = []
+
+    for i in range(len(aliados)):
+
+        for j in range(i + 1, len(aliados)):
+
+            camp_a, camp_b = aliados[i], aliados[j]
+
+            par = tuple(sorted([camp_a, camp_b]))
+            n_juntos = contagem_pares.get(par, 0)
+
+            expo_a = contagem_exposicao.get(camp_a, 0)
+            expo_b = contagem_exposicao.get(camp_b, 0)
+            menor_expo = min(expo_a, expo_b)
+
+            if menor_expo > 0:
+                taxa = n_juntos / menor_expo
+            else:
+                taxa = 0
+
+            sinergia.append({
+                "campeao_a" : camp_a,
+                "campeao_b" : camp_b,
+                "jogos_juntos" : n_juntos,
+                "taxa_sinergia" : round(taxa * 100, 1)
+            })
+
+    return {
+        "aliados" : aliados,
+        "inimigos" : inimigos,
+        "matchups" : matchups,
+        "respostas" : respostas,
+        "sinergias" : sinergia
+    }
+
+
+# %%
 import modelos_cache
 
 limiar_flex = 0.10
 minimo_exposicao = 3
 limitar_ban_proprio = 0.03
+
 patch_atual = int(tabela_final["patch_num"].max())
+tot_picks_geral = sum(contagem_exposicao.values())
 
 
 def gerar_Dna_Automatico(df_completo):
@@ -1062,35 +1557,29 @@ def get_posicoes_ocupadas(lista_picks, dna_campeoes):
     return list(rotas_ocupadas.keys())    
 
 
-def get_winrate(camp, contra):
-    total = matchup_total.get((camp, contra), 0)
-    if total < minimo_exposicao:
-        return 0.5
-    return matchup_vitorias.get((camp, contra), 0) / total
+def cod_camp_seguro(campeoes):
+
+    num_champs = []
+
+    for camp in campeoes:
+        if camp in cod_camp.classes_:
+            num_champs.append(int(cod_camp.transform([camp])[0]))
+
+        else:
+            print(f"\033[33m[Aviso] Campeão {camp} fora dos campeões conhecidos pela IA\033[m. Tratado como neutro.")
+            num_champs.append(-1)
+
+    return num_champs
 
 
-def get_threshold_counter(total_jogos):
-    if total_jogos < 10:
-        return 1.0
-    elif total_jogos < 30:
-        return 0.68
-    elif total_jogos < 50:
-        return 0.63
-    elif total_jogos < 100:
-        return 0.58
+def cod_time_seguro(nome_time):
+
+    if nome_time in cod_time.classes_:
+        return int(cod_time.transform([nome_time])[0])
     else:
-        return 0.55
-    
+        print(f'\033[33m[Aviso] Time {nome_time} fora das equipes conhecidas pela IA\033[m. Tratado como "Desconhecidos"')
 
-def get_forca_counter(camp, meu_pick):
-    total = matchup_total.get((camp, meu_pick), 0)
-    threshold = get_threshold_counter(total)
-    winrate = get_winrate(camp, meu_pick)
-
-    if winrate <= threshold:
-        return 0.0
-    
-    return min((winrate - threshold) / (1.0 -threshold), 1.0)
+        return int(cod_time.transform(["Desconhecidos"])[0])
 
 
 def preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo):
@@ -1120,7 +1609,7 @@ def preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo):
             ordem_banimentos.append(bans_fp[i])
 
     if len(ordem_banimentos) > 0:
-        num_bans = cod_camp.transform(ordem_banimentos).tolist()
+        num_bans = cod_camp_seguro(ordem_banimentos)
     else:
         num_bans = []
 
@@ -1130,16 +1619,74 @@ def preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo):
     return num_bans[:10]
 
 
+def nota_contexto(nota_geral, nota_condicional, qtd_jogos, k_credibilidade = 6, teto_confianca = 0.35):
+
+    if qtd_jogos <= 0:
+        return nota_geral
+
+    confianca = qtd_jogos / (qtd_jogos + k_credibilidade)
+    confianca = min(confianca, teto_confianca)
+
+    nota_final = nota_geral * (1 - confianca) + nota_condicional * confianca
+
+    return nota_final
+
+
+def confianca_amostra(qtd_jogos, k_credbilidade):
+
+    if qtd_jogos <= 0:
+        return 0
+
+    confianca = qtd_jogos / (qtd_jogos + k_credbilidade)
+
+    return confianca
+
+
+def peso_counter_condicional(vitorias, qtd_jogos, win_rate_geral, k_credibilidade = 15, teto_confianca = 0.90):
+
+    if qtd_jogos <= 0:
+        return 0
+
+    taxa_vitoria = vitorias / qtd_jogos
+
+    taxa_ajustada = nota_contexto(win_rate_geral, taxa_vitoria, qtd_jogos, k_credibilidade, teto_confianca)
+    taxa_final = taxa_ajustada - win_rate_geral
+
+    return taxa_final
+
+
+def forca_matchup(camp, inimigo, buff = 1.5):
+
+    total_jogos = matchup_total.get((camp, inimigo), 0)
+    vitorias = matchup_vitorias.get((camp, inimigo), 0)
+
+    impacto_matchup = peso_counter_condicional(vitorias, total_jogos, 0.5)
+
+    return impacto_matchup * buff
+
+
+def resposta_camp(camp, inimigo): # vOu mudar o nome
+
+    pick_adv_global = contagem_exposicao.get(inimigo, 0)
+    pick_contra_adv = contagem_respostas.get((inimigo, camp), 0)
+
+    presenca_pick = contagem_exposicao.get(camp, 0) / tot_picks_geral if tot_picks_geral > 0 else 0
+
+    peso_resposta = peso_counter_condicional(pick_contra_adv, pick_adv_global, presenca_pick)
+
+    return peso_resposta
+    
+
 def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks_totais, time_tem_p1_no_jogo, retornar_lista = False, modelo = None):
 
     from random import choices
 
-    global prioridade_historica, prioridade_p1, ban_contra_fp, ban_contra_lp, total_contra_fp, total_contra_lp
+    global prioridade_historica, prioridade_p1, ban_contra_fp, ban_contra_lp, total_contra_fp, total_contra_lp, total_fp_confronto, picks_fp_confronto, jogos_contra_adv, picks_confronto
 
     if modelo is not None:
         modelo_usado = modelo
     else:
-        modelo_usado = modelos_cache.buscar_modelos("GERAL")  # modelo_ia
+        modelo_usado = modelos_cache.buscar_modelos("GERAL")
 
     proibidos = list(bansTime1) + list(bansTime2) + list(picks_totais)
 
@@ -1150,6 +1697,7 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
         return "Time Completo"
     
     pool_do_time = tabela_liga_ativa[tabela_liga_ativa["teamname"] == time1]
+    rotas_por_campeao = pool_do_time.groupby("champion")["position"].apply(set).to_dict()
 
     if time1 in prioridade_p1.index:
         serie_p1 = prioridade_p1.loc[time1]
@@ -1161,16 +1709,18 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
     todos_camps_time = set(pool_do_time["champion"].unique())
 
     e_primeiro_pick_time = len(picksTime1) == 0
-    id_time = cod_time.transform([time1])[0]
-    id_opp = cod_time.transform([time2])[0]
+
+    id_time = cod_time_seguro(time1)
+    id_opp = cod_time_seguro(time2)
+
     valor_posse_p1 = 1.0 if time_tem_p1_no_jogo else 0.0
 
-    picks_time1_nums = cod_camp.transform(picksTime1).tolist() if len(picksTime1) > 0 else []
+    picks_time1_nums = cod_camp_seguro(picksTime1)
 
     while len(picks_time1_nums) < 4:
         picks_time1_nums.append(-1)
-    
-    picks_time2_nums = cod_camp.transform(picksTime2).tolist() if len(picksTime2) > 0 else []
+
+    picks_time2_nums = cod_camp_seguro(picksTime2)
 
     while len(picks_time2_nums) < 5:
         picks_time2_nums.append(-1)
@@ -1180,8 +1730,8 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
 
     t = min(n_picks_feitos / 9.0, 1.0)
 
-    peso_hist = 0.30
-    peso_ia = 0.25
+    peso_hist = 0.25
+    peso_ia = 0.30
     peso_oportunidade = max(0.20 - (t * 0.20), 0.0)
     peso_sinergia = 0.08 + (t * 0.14)
     peso_counter = 0.17 + (t * 0.06)
@@ -1206,14 +1756,42 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
         campeoes_modelo = cod_camp.inverse_transform(modelo_usado.classes_)
         raking_ia = pd.Series(probs, index = campeoes_modelo)
 
-        for camp in cod_camp.classes_:
+        pool_rota = []
 
-            if camp in proibidos:
+        for champ in cod_camp.classes_:
+
+            if champ in proibidos:
                 continue
-            if camp not in dna_campeoes:
+            if champ not in dna_campeoes:
                 continue
-            if dna_campeoes[camp].get(rota, 0) < limiar_flex:
+            if dna_campeoes[champ].get(rota, 0) < limiar_flex:
                 continue
+
+            pool_rota.append(champ)
+
+        jogados_rota = {}
+
+        for champ in pool_rota:
+
+            if time1 in prioridade_historica.index:
+                jogados_rota[champ] = prioridade_historica.loc[time1].get(champ, 0)
+            else:
+                jogados_rota[champ] = 0
+
+        maior_freq_rota = max(jogados_rota.values(), default = 0)
+
+        pool_normalizada = {}
+
+        for champ, val in jogados_rota.items():
+
+            if maior_freq_rota > 0:
+                pool_normalizada[champ] = val / maior_freq_rota
+            else:
+                pool_normalizada[champ] = 0
+
+        peso_pool = peso_total_jogos.get(time1, 0)
+
+        for camp in pool_rota:
             
             prio_ia = raking_ia.get(camp, 0)
             bonus_sinergia = 0
@@ -1221,13 +1799,13 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
             prio_hist = 0
 
             if camp in camp_confort_time:
-                fator_pool = 1.00
-            elif camp in todos_camps_time:
-                fator_pool = 0.15
+                rotas_jogadas = rotas_por_campeao.get(camp, set())
+                fator_pool = 1.02 if len(rotas_jogadas) >= 2 else 1.00
             else:
-                fator_pool = 0.02          
+                fator_pool = 0.10          
 
             bonus_oportunidade = 0
+            pena_hist = 0.02
 
             total_jogos_contra = total_contra_ctx.get(time1, 1)
             contagem_bans_contra = historico_contra.get((time1, camp), 0) + 1
@@ -1239,11 +1817,21 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                     decaida = max(1.0 - (n_picks_feitos * 0.25), 0)
                     bonus_oportunidade = (taxa_ameaca * 0.40) * decaida
 
-            if e_primeiro_pick_time and time_tem_p1_no_jogo:  
+            if e_primeiro_pick_time and time_tem_p1_no_jogo:
+                champs_geral_p1 = prioridade_p1.loc[time1].get(camp, 0)
+                champ_confronto_p1 = picks_fp_confronto.get((time1, time2), {}).get(camp, 0)
+                confronto_fp_total = total_fp_confronto.get((time1, time2), 0)
+                prio_time = nota_contexto(champs_geral_p1, champ_confronto_p1, confronto_fp_total)
+                
                 if camp not in pool_p1_valido:
-                    continue
+                    geral_hist = prioridade_historica.loc[time1].get(camp, 0) if time1 in prioridade_historica.index else 0
+                    base_p1 = max(geral_hist, prio_time, pena_hist)
+                    
+                    if camp in todos_camps_time:
+                        prio_time = base_p1 * 0.60
+                    else:
+                        prio_time = base_p1 * 0.30
 
-                prio_time = prioridade_p1.loc[time1].get(camp, 0)
                 prio_hist = prio_time
 
                 score = ((prio_time * peso_hist) + (prio_ia * peso_ia) + (bonus_oportunidade * peso_oportunidade))
@@ -1252,9 +1840,16 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                 prio_time = 0
 
                 if time1 in prioridade_historica.index:
-                    prio_time = prioridade_historica.loc[time1].get(camp, 0)
-                
-                prio_hist = prio_time * fator_pool
+                    champs_geral = prioridade_historica.loc[time1].get(camp, 0)
+                    prio_normalizada = pool_normalizada.get(camp, 0)
+                    prio_base = nota_contexto(champs_geral, prio_normalizada, peso_pool, 8, 0.30)
+
+                    champ_confronto = picks_confronto.get((time1, time2), {}).get(camp, 0)
+                    qtd_jogos = jogos_contra_adv.get((time1, time2), 0)
+                    prio_time = nota_contexto(prio_base, champ_confronto, qtd_jogos)
+
+                prio_hist = max(prio_time, pena_hist) * fator_pool
+
                 bonus_sinergia = 0
                 bonus_counter = 0
 
@@ -1303,9 +1898,11 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                     punicao_lane = 0            
 
                     for inimigo in picksTime2:
-                        
-                        forca = get_forca_counter(camp, inimigo)
-                        punicao = get_forca_counter(inimigo, camp)
+
+                        valor_matchup = forca_matchup(camp, inimigo)
+
+                        forca = max(valor_matchup, 0)
+                        punicao = max(-valor_matchup, 0)
 
                         if inimigo == adv_lane:
                             forca_lane = forca
@@ -1314,15 +1911,8 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                             lista_forcas.append(forca)
                             lista_punicao.append(punicao)
 
-                        n_resposta = contagem_respostas.get((inimigo, camp), 0)
-                        n_inimigo = contagem_exposicao.get(inimigo, 0)
-
-                        lista_resposta.append(n_resposta / n_inimigo if n_inimigo > minimo_exposicao else 0)
-
-                        n_punicao = contagem_respostas.get((camp, inimigo), 0)
-                        n_team = contagem_exposicao.get(camp, 0)
-
-                        lista_puni_resp.append(n_punicao / n_team if n_team > minimo_exposicao else 0)
+                        lista_resposta.append(resposta_camp(camp, inimigo))
+                        lista_puni_resp.append(resposta_camp(inimigo, camp))
 
                     if len(lista_forcas) > 0:
                         avg_forca = sum(lista_forcas) / len(lista_forcas)
@@ -1335,8 +1925,8 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                         avg_punicao = 0
 
                     if adv_lane:
-                        balanco_positivo = (forca_lane * 0.6) + (avg_forca * 0.4)
-                        balanco_negativo = (punicao_lane * 0.6) + (avg_punicao * 0.4)
+                        balanco_positivo = (forca_lane * 0.65) + (avg_forca * 0.35)
+                        balanco_negativo = (punicao_lane * 0.65) + (avg_punicao * 0.35)
                     else:
                         if len(lista_forcas) > 0:
                             max_forca = max(lista_forcas)
@@ -1395,11 +1985,11 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
         )
 
     return "Fallback"
-    
-         
+
+
 def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks, time_tem_p1_no_jogo, modelo = None):
 
-    global prioridade_historica, ban_fase1_fp, ban_fase1_lp, total_fp, total_lp, ban_contra_fp, ban_contra_lp, total_contra_fp, total_contra_lp
+    global prioridade_historica, ban_fase1_fp, ban_fase1_lp, total_fp, total_lp, ban_contra_fp, ban_contra_lp, total_contra_fp, total_contra_lp, bans_vs_fp, bans_vs_lp, jogos_vs_fp, jogos_vs_lp
 
     if modelo is not None:
         modelo_usado = modelo
@@ -1414,22 +2004,25 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
     if not rotas_vagas_adv:
         return df_meta[~df_meta.index.isin(proibidos)].sort_values(by = "ban_rate", ascending = False).index[0]
 
-    id_inimigo = cod_time.transform([time2])[0]
-    id_aliado = cod_time.transform([time1])[0]
+    id_inimigo = cod_time_seguro(time2)
+    id_aliado = cod_time_seguro(time1)
+
     posse_p1_adv = 0.0 if time_tem_p1_no_jogo else 1.0
 
-    picks_time2_nums = cod_camp.transform(picksTime2).tolist() if len(picksTime2) > 0 else []
+    picks_time2_nums = cod_camp_seguro(picksTime2)
 
     while len(picks_time2_nums) < 4:
         picks_time2_nums.append(-1)
-    
-    picks_time1_nums = cod_camp.transform(picksTime1).tolist() if len(picksTime1) > 0 else []
+
+    picks_time1_nums = cod_camp_seguro(picksTime1)
 
     while len(picks_time1_nums) < 5:
         picks_time1_nums.append(-1)
-    
+
     historico_aliado = ban_fase1_fp if time_tem_p1_no_jogo else ban_fase1_lp
     total_aliado_ctx = total_fp if time_tem_p1_no_jogo else total_lp
+    bans_champ_vs = bans_vs_fp if time_tem_p1_no_jogo else bans_vs_lp
+    bans_vs_adv = jogos_vs_fp if time_tem_p1_no_jogo else jogos_vs_lp
 
     historico_contra = ban_contra_lp if time_tem_p1_no_jogo else ban_contra_fp
     total_contra_ctx = total_contra_lp if time_tem_p1_no_jogo else total_contra_fp
@@ -1442,7 +2035,7 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
         for pick in picksTime1:
             total = total_pick_fase2.get(pick, 0)
-            
+
             if total < minimo_exposicao:
                 continue
 
@@ -1457,24 +2050,24 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
                 taxa = count / total
                 score_ban_fase2[ban] = score_ban_fase2.get(ban, 0) + taxa / len(picksTime1)
-    
-    # Counter 
+
+    # Counter
 
     score_counter = {}
 
     if picksTime1:
 
         for camp in cod_camp.classes_:
-            forca_total = 0      
+            forca_total = 0
 
             for meu_pick in picksTime1:
-                forca_total += get_forca_counter(camp, meu_pick)
+                forca_total += max(forca_matchup(camp, meu_pick), 0)
 
             score_counter[camp] = min(forca_total / len(picksTime1), 0.25)
 
     n_picks_feitos = len(picksTime2) + len(picksTime1)
     num_bans = preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo)
-    
+
     melhor_ban = None
     maior_perigo = -1
 
@@ -1492,43 +2085,92 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
         campeoes_modelo = cod_camp.inverse_transform(modelo_usado.classes_)
         ranking_inimigo = pd.Series(probs, index = campeoes_modelo)
 
-        for camp in cod_camp.classes_:
+        pool_rota = []
 
-            if camp in proibidos or camp not in dna_campeoes:
+        for champ in cod_camp.classes_:
+
+            if champ in proibidos:
                 continue
-            
-            if dna_campeoes[camp].get(rota, 0) < limiar_flex:
+            if champ not in dna_campeoes:
                 continue
+            if dna_campeoes[champ].get(rota, 0) < limiar_flex:
+                continue
+
+            pool_rota.append(champ)
+
+        jogados_rota_adv = {}
+
+        for champ in pool_rota:
+
+            if time2 in prioridade_historica.index:
+                jogados_rota_adv[champ] = prioridade_historica.loc[time2].get(champ, 0)
+            else:
+                jogados_rota_adv[champ] = 0
+
+        maior_freq_adv = max(jogados_rota_adv.values(), default = 0)
+
+        pool_normalizada_adv = {}
+
+        for champ, val in jogados_rota_adv.items():
+
+            if maior_freq_adv > 0:
+                pool_normalizada_adv[champ] = val / maior_freq_adv
+            else:
+                pool_normalizada_adv[champ] = 0
+
+        peso_pool_adv = peso_total_jogos.get(time2, 0)
+
+        for camp in pool_rota:
 
             prio_inimigo = 0
             prio_aliado = 0
 
             if time2 in prioridade_historica.index:
-                prio_inimigo = prioridade_historica.loc[time2].get(camp, 0)
-            
+                champ_geral_adv = jogados_rota_adv.get(camp, 0)
+                prio_norma_adv = pool_normalizada_adv.get(camp, 0)
+
+                prio_inimigo = nota_contexto(champ_geral_adv, prio_norma_adv, peso_pool_adv, 8, 0.25)
+
             if time1 in prioridade_historica.index:
                 prio_aliado = prioridade_historica.loc[time1].get(camp, 0)
-                
+
             if prio_aliado > limitar_ban_proprio:
                 continue
-            
+
             pref_ia = ranking_inimigo.get(camp, 0)
             meta_ban = (df_meta.loc[camp, "ban_rate"] / 100) if camp in df_meta.index else 0
 
             total_jogos_aliado = total_aliado_ctx.get(time1, 1)
             contagem_bans = historico_aliado.get((time1, camp), 0)
+            
+            nota_bans_champ = bans_champ_vs.get((time1, time2), {}).get(camp, 0)
+            jogos_confronto = bans_vs_adv.get((time1, time2), 0)
+            
             bonus_historico_aliado = 0
 
-            if total_jogos_aliado > minimo_exposicao:
-                bonus_historico_aliado = min(contagem_bans / total_jogos_aliado, 0.25)
-            
+            if total_jogos_aliado > 0:
+
+                ban_rate_bruto = contagem_bans / total_jogos_aliado
+                conf_hist = confianca_amostra(total_jogos_aliado, 6)
+                nota_geral_ban = ban_rate_bruto * conf_hist
+
+                bonus_historico_aliado = min(nota_contexto(nota_geral_ban, nota_bans_champ, jogos_confronto, k_credibilidade = 8, teto_confianca = 0.25), 0.30)
+
             bonus_ameaca_oculta = 0
 
             total_jogos_contra = total_contra_ctx.get(time2, 1)
             contagem_bans_contra = historico_contra.get((time2, camp), 0)
+            bans_confronto = nota_bans_champ * jogos_confronto
 
-            if total_jogos_contra >= minimo_exposicao:
-                bonus_ameaca_oculta = min(contagem_bans_contra / total_jogos_contra, 0.25)
+            bans_resto = max(contagem_bans_contra - bans_confronto, 0)
+            jogos_resto = max(total_jogos_contra - jogos_confronto, 0)
+
+            if jogos_resto > 0:
+
+                ban_rate_bruto = bans_resto / jogos_resto 
+                conf_ameaca = confianca_amostra(jogos_resto, 6)
+                
+                bonus_ameaca_oculta = min(ban_rate_bruto * conf_ameaca, 0.25)
 
             bonus_combo_adv = 0
 
@@ -1561,11 +2203,11 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
             else:
 
-                peso_inimigo = 0.35 if not time_tem_p1_no_jogo else 0.30
-                peso_historico = 0.15 if not time_tem_p1_no_jogo else 0.20
+                peso_inimigo = 0.22 if not time_tem_p1_no_jogo else 0.20
+                peso_historico = 0.23 if not time_tem_p1_no_jogo else 0.25
 
                 score_perigo = (
-                    (prio_inimigo * peso_inimigo) + (pref_ia * 0.15) + (meta_ban * 0.10) +
+                    (prio_inimigo * peso_inimigo) + (pref_ia * 0.17) + (meta_ban * 0.08) +
                     (bonus_historico_aliado * peso_historico) + (bonus_ameaca_oculta * 0.30)
                     
                 )
@@ -1578,7 +2220,6 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
         return melhor_ban
     
     return df_meta[~df_meta.index.isin(proibidos)].sort_values(by = "ban_rate", ascending = False).index[0]
-
 
 # %%
 def ordemPicksBans(timeFP, timeLP, jogos, picks = None):
@@ -1647,8 +2288,8 @@ times_liga_ativa = tabela_liga_ativa["teamname"].unique()
 print(times_liga_ativa)
 
 # %%
-time1 = "FURIA"
-time2 = "RED Canids"
+time1 = "LOUD"
+time2 = "paiN Gaming"
 
 historico_fearless = []
 

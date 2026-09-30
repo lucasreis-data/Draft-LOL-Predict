@@ -52,22 +52,26 @@ public class DraftService {
   }
 
   public Object criarDraft(DraftStartDto dados) {
-    if (!timeService.existe(dados.timeIA())) {
-      throw new IllegalArgumentException("Time não encontrado: " + dados.timeIA());
-    }
-    if (!timeService.existe(dados.timeUsuario())) {
-      throw new IllegalArgumentException("Time não encontrado: " + dados.timeUsuario());
-    }
+    String liga = (dados.liga() == null || dados.liga().isBlank())
+        ? "CBLOL" : dados.liga().trim().toUpperCase();
+    List<String> timesLiga = listarTimesPorLiga(liga);
+
+    String timeIA = timesLiga.stream()
+        .filter(t -> t.equalsIgnoreCase(dados.timeIA()))
+        .findFirst()
+        .orElseThrow(() -> new IllegalArgumentException("Time não encontrado: " + dados.timeIA()));
+    String timeUsuario = timesLiga.stream()
+        .filter(t -> t.equalsIgnoreCase(dados.timeUsuario()))
+        .findFirst()
+        .orElseThrow(() -> new IllegalArgumentException("Time não encontrado: " + dados.timeUsuario()));
+
     if (dados.quantidadeJogos() == null) {
       throw new IllegalArgumentException("quantidadeJogos é obrigatório");
     }
-
-    String timeIA = timeService.normalizar(dados.timeIA());
-    String timeUsuario = timeService.normalizar(dados.timeUsuario());
     boolean isFirstPick = Boolean.TRUE.equals(dados.isFirstPick());
 
     DraftSessao sessao = new DraftSessao(
-      UUID.randomUUID().toString(), timeUsuario, timeIA, "CBLOL" ,isFirstPick, dados.quantidadeJogos()
+      UUID.randomUUID().toString(), timeUsuario, timeIA, liga, isFirstPick, dados.quantidadeJogos()
     );
     draftSessaoRepository.salvar(sessao);
 
@@ -240,5 +244,9 @@ public class DraftService {
     resposta.put("podeDesfazer", sessao.podeDesfazer());
     resposta.put("podeRefazer", sessao.podeRefazer());
     return resposta;
+  }
+
+  public List<String> listarTimesPorLiga(String liga){
+    return pythonClient.listarTimes(liga);
   }
 }
