@@ -3,7 +3,10 @@ package com.lol.draft_lol.DTO;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 public record DraftStartDto (
 
@@ -18,7 +21,7 @@ public record DraftStartDto (
   String timeIA,
 
   @Schema(example = "3", description= "Quantidade de jogos na serie(apenas número)")
-  @NotBlank(message = "A quantidade não pode estar vazio")
+  @NotNull @Min(1) @Max(5) 
   @JsonProperty("quantidadeJogos")
   Integer quantidadeJogos,
 

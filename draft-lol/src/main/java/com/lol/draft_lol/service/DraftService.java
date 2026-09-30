@@ -101,8 +101,6 @@ public class DraftService {
         SugestaoResponseDto resposta = pythonClient.pedirAcao(montarRequest(sessao, jogadorAtual));
         champion = primeiroCampeao(resposta.champion());
       }
-
-      // só chega aqui se nada falhou: registra o histórico ANTES de mudar o estado
       sessao.registrarHistorico();
       aplicarAcao(sessao, jogadorAtual, isBan, champion);
       sessao.setFaseAtual(sessao.getFaseAtual().proximaFase(sessao.isFirstPick()).fase());
