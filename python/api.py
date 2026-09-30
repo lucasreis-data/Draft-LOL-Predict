@@ -88,9 +88,14 @@ def pedir_sugestao(req: DraftRequest):
 @app.post("/draft/acao")
 def acao(req: DraftRequest):
     modelo = obter_modelo_sessao(req.liga)
-    args = (
-        req.time_player, req.bans_player, req.picks_player, req.time_ia, req.bans_ia, req.picks_ia, req.fearless, req.is_first_pick
-    )
+    if req.jogador_atual == "IA":
+        args = (req.time_ia, req.bans_ia, req.picks_ia,
+            req.time_player, req.bans_player, req.picks_player,
+            req.fearless, not req.is_first_pick)
+    else:
+        args = (req.time_player, req.bans_player, req.picks_player,
+            req.time_ia, req.bans_ia, req.picks_ia,
+            req.fearless, req.is_first_pick)
     if req.fase.startswith("BAN"):
         champion = cblol.sugeriBans(*args, modelo = modelo)
     else: 

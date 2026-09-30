@@ -2,6 +2,7 @@ from pydantic import BaseModel
 
 class DraftRequest(BaseModel):
     liga: str = "CBLOL"
+    jogador_atual: str = "PLAYER"
     time_player: str
     bans_player: list[str] = []
     picks_player: list[str] = []
