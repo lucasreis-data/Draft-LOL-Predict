@@ -34,10 +34,14 @@ public class TimeService {
   }
 
   public boolean existe(String time){
-    return this.times.contains(time);
+    return this.times.stream()
+        .anyMatch(t -> t.equalsIgnoreCase(time));
   }
 
   public String normalizar(String time){
-    return time.toUpperCase().replace("'", "").replace(" ", "_");
+    return this.times.stream()
+        .filter(t -> t.equalsIgnoreCase(time))
+        .findFirst()
+        .orElse(time);
   }
 }

@@ -73,11 +73,20 @@ public class DraftController {
 
   @GetMapping("/draft/Sugestao")
   public Object sugerir(@Valid DraftSugestaoDto request) {
-      return pythonClient.pedirSugestao(request.sessionId());
+    try {
+      return ResponseEntity.ok(draftService.obterSugestao(request));
+    } catch (IllegalArgumentException e) {
+      return ResponseEntity.badRequest().body(e.getMessage());
+    }
   }
+  
   @GetMapping("/draft/sessao")
-  public Object acessarSessao(@Valid DraftSugestaoDto request){
-    return pythonClient.acessarSessao(request.sessionId());
+  public ResponseEntity<Object> acessarSessao(@Valid DraftSugestaoDto request) {
+    try {
+      return ResponseEntity.ok(draftService.acessarSessao(request));
+    } catch (IllegalArgumentException e) {
+      return ResponseEntity.badRequest().body(e.getMessage());
+    }
   }
 
   @GetMapping("/draft/ligas/disponiveis")
@@ -97,26 +106,55 @@ public class DraftController {
   }
 
   @PostMapping("/draft/Start")
-  public Object draftInicio(@RequestBody @Valid DraftStartDto request){
-    Object draftIniciado = draftService.criarDraft(request);
-    return ResponseEntity.ok(draftIniciado);
-  }
-
-  @PostMapping("/draft/Picks-Bans")
-  public ResponseEntity<Object> alterarDraft(@RequestBody @Valid DraftAcaoDto request){
-    try{
-      Object draftAlterado = draftService.alterarDraft(request);
-      return ResponseEntity.ok(draftAlterado);
-    }catch(AcaoEmAndamentoException e){
-      return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(e.getMessage());
-    } catch(IllegalArgumentException e){
+  public ResponseEntity<Object> draftInicio(@RequestBody @Valid DraftStartDto request) {
+    try {
+      return ResponseEntity.ok(draftService.criarDraft(request));
+    } catch (IllegalArgumentException e) {
       return ResponseEntity.badRequest().body(e.getMessage());
     }
   }
 
+
   @PostMapping("/draft/Prox-jogo")
-  public Object proxJogo(@RequestBody @Valid DraftProxJogoDto request){
-    Object draftProxJogo = draftService.proxJogo(request);
-    return ResponseEntity.ok(draftProxJogo);
+public ResponseEntity<Object> proxJogo(@RequestBody @Valid DraftProxJogoDto request) {
+  try {
+    return ResponseEntity.ok(draftService.proxJogo(request));
+  } catch (AcaoEmAndamentoException e) {
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(e.getMessage());
+  } catch (IllegalArgumentException e) {
+    return ResponseEntity.badRequest().body(e.getMessage());
   }
+}
+
+@PostMapping("/draft/desfazer")
+public ResponseEntity<Object> desfazer(@RequestBody @Valid DraftSugestaoDto request) {
+  try {
+    return ResponseEntity.ok(draftService.desfazer(request));
+  } catch (AcaoEmAndamentoException e) {
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(e.getMessage());
+  } catch (IllegalArgumentException e) {
+    return ResponseEntity.badRequest().body(e.getMessage());
+  }
+}
+
+@PostMapping("/draft/refazer")
+public ResponseEntity<Object> refazer(@RequestBody @Valid DraftSugestaoDto request) {
+  try {
+    return ResponseEntity.ok(draftService.refazer(request));
+  } catch (AcaoEmAndamentoException e) {
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(e.getMessage());
+  } catch (IllegalArgumentException e) {
+    return ResponseEntity.badRequest().body(e.getMessage());
+  }
+}
+@PostMapping("/draft/Picks-Bans")
+public ResponseEntity<Object> alterarDraft(@RequestBody @Valid DraftAcaoDto request) {
+  try {
+    return ResponseEntity.ok(draftService.alterarDraft(request));
+  } catch (AcaoEmAndamentoException e) {
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(e.getMessage());
+  } catch (IllegalArgumentException e) {
+    return ResponseEntity.badRequest().body(e.getMessage());
+  }
+}
 }

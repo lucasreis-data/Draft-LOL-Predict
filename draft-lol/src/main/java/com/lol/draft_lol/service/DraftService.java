@@ -1,8 +1,11 @@
 package com.lol.draft_lol.service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -11,97 +14,236 @@ import com.lol.draft_lol.DTO.DraftAcaoDto;
 import com.lol.draft_lol.DTO.DraftProxJogoDto;
 import com.lol.draft_lol.DTO.DraftRequestDto;
 import com.lol.draft_lol.DTO.DraftStartDto;
+import com.lol.draft_lol.DTO.DraftSugestaoDto;
+import com.lol.draft_lol.DTO.DraftSugestaoRequestDto;
+import com.lol.draft_lol.DTO.SugestaoResponseDto;
 import com.lol.draft_lol.client.PythonDraftClient;
 import com.lol.draft_lol.exception.AcaoEmAndamentoException;
-
-import feign.FeignException;
+import com.lol.draft_lol.model.DraftSessao;
+import com.lol.draft_lol.model.Fase;
+import com.lol.draft_lol.repository.DraftSessaoRepository;
 
 @Service
 public class DraftService {
-  
+
   @Autowired
   private PythonDraftClient pythonClient;
   @Autowired
   private TimeService timeService;
   @Autowired
   private ChampionService championService;
+  @Autowired
+  private DraftSessaoRepository draftSessaoRepository;
 
   private final Map<String, Boolean> sessoesOcupadas = new ConcurrentHashMap<>();
 
-  public Object gerarDraft(DraftRequestDto dados){
+  public Object gerarDraft(DraftRequestDto dados) {
     if (!timeService.existe(dados.timeA())) {
-        throw new IllegalArgumentException("Time não encontrado: " + dados.timeA());
+      throw new IllegalArgumentException("Time não encontrado: " + dados.timeA());
     }
     if (!timeService.existe(dados.timeB())) {
-        throw new IllegalArgumentException("Time não encontrado: " + dados.timeB());
+      throw new IllegalArgumentException("Time não encontrado: " + dados.timeB());
     }
     String timeA = timeService.normalizar(dados.timeA());
     String timeB = timeService.normalizar(dados.timeB());
-    DraftRequestDto dadosNormalizados = new DraftRequestDto(
-      timeA, 
-      timeB, 
-      dados.quantidadeJogos()
-    );
+    DraftRequestDto dadosNormalizados = new DraftRequestDto(timeA, timeB, dados.quantidadeJogos());
 
-    return pythonClient.preverDraft(dados);
+    return pythonClient.preverDraft(dadosNormalizados);
   }
 
-  public Object criarDraft(DraftStartDto dados){
+  public Object criarDraft(DraftStartDto dados) {
+    String liga = (dados.liga() == null || dados.liga().isBlank())
+        ? "CBLOL" : dados.liga().trim().toUpperCase();
+    List<String> timesLiga = listarTimesPorLiga(liga);
 
-    List <String> timesLiga = listarTimesPorLiga(dados.liga());
+    String timeIA = timesLiga.stream()
+        .filter(t -> t.equalsIgnoreCase(dados.timeIA()))
+        .findFirst()
+        .orElseThrow(() -> new IllegalArgumentException("Time não encontrado: " + dados.timeIA()));
+    String timeUsuario = timesLiga.stream()
+        .filter(t -> t.equalsIgnoreCase(dados.timeUsuario()))
+        .findFirst()
+        .orElseThrow(() -> new IllegalArgumentException("Time não encontrado: " + dados.timeUsuario()));
 
-    if(!timesLiga.contains(dados.timeIA())){
-      throw new IllegalArgumentException("Time não encontrado: " + dados.timeIA());
+    if (dados.quantidadeJogos() == null) {
+      throw new IllegalArgumentException("quantidadeJogos é obrigatório");
     }
-    if(!timesLiga.contains(dados.timeUsuario())){
-      throw new IllegalArgumentException("Time não encontrado: " + dados.timeUsuario());
-    }
+    boolean isFirstPick = Boolean.TRUE.equals(dados.isFirstPick());
 
-    String timeIA = timeService.normalizar(dados.timeIA());
-    String timeUsuario = timeService.normalizar(dados.timeUsuario());
-
-    DraftStartDto dadosNormalizados = new DraftStartDto(
-      timeIA, 
-      timeUsuario, 
-      dados.quantidadeJogos(),
-      dados.isFirstPick(),
-      dados.liga()
+    DraftSessao sessao = new DraftSessao(
+      UUID.randomUUID().toString(), timeUsuario, timeIA, liga, isFirstPick, dados.quantidadeJogos()
     );
+    draftSessaoRepository.salvar(sessao);
 
-    return pythonClient.iniciarDraft(dados);
+    return montarResposta(sessao);
   }
 
-  public Object alterarDraft(DraftAcaoDto dados){
-    String sessionId = dados.sessionId();
+  public Object alterarDraft(DraftAcaoDto dados) {
+    return comTrava(dados.sessionId(), () -> {
+      DraftSessao sessao = buscarSessao(dados.sessionId());
+      if (sessao.getFaseAtual() == Fase.FIM) {
+        throw new IllegalArgumentException("Draft já finalizado");
+      }
+
+      String jogadorAtual = calcularJogadorAtual(sessao);
+      boolean isBan = sessao.getFaseAtual().name().startsWith("BAN");
+
+      String champion;
+      if (dados.champion() != null) {
+        if (!championService.existe(dados.champion())) {
+          throw new IllegalArgumentException("Campeão não encontrado: " + dados.champion());
+        }
+        champion = championService.normalizar(dados.champion());
+        if (sessao.campeaoIndisponivel(champion)) {
+          throw new IllegalArgumentException("Campeão indisponível: " + champion);
+        }
+      } else {
+        SugestaoResponseDto resposta = pythonClient.pedirAcao(montarRequest(sessao, jogadorAtual));
+        champion = primeiroCampeao(resposta.champion());
+      }
+
+      // só chega aqui se nada falhou: registra o histórico ANTES de mudar o estado
+      sessao.registrarHistorico();
+      aplicarAcao(sessao, jogadorAtual, isBan, champion);
+      sessao.setFaseAtual(sessao.getFaseAtual().proximaFase(sessao.isFirstPick()).fase());
+      draftSessaoRepository.salvar(sessao);
+
+      return montarResposta(sessao);
+    });
+  }
+
+  public Object proxJogo(DraftProxJogoDto dados) {
+    return comTrava(dados.sessionId(), () -> {
+      DraftSessao sessao = buscarSessao(dados.sessionId());
+      if (sessao.getGameAtual() >= sessao.getTotalJogos()) {
+        throw new IllegalArgumentException("Draft já finalizado");
+      }
+      if (sessao.getFaseAtual() != Fase.FIM) {
+        throw new IllegalArgumentException("Jogo não finalizado");
+      }
+
+      sessao.registrarHistorico();
+      sessao.iniciarNovoJogo(Boolean.TRUE.equals(dados.isFirstPick()));
+      draftSessaoRepository.salvar(sessao);
+
+      return montarResposta(sessao);
+    });
+  }
+
+  public Object desfazer(DraftSugestaoDto dados) {
+    return comTrava(dados.sessionId(), () -> {
+      DraftSessao sessao = buscarSessao(dados.sessionId());
+      sessao.desfazer();
+      draftSessaoRepository.salvar(sessao);
+      return montarResposta(sessao);
+    });
+  }
+
+  public Object refazer(DraftSugestaoDto dados) {
+    return comTrava(dados.sessionId(), () -> {
+      DraftSessao sessao = buscarSessao(dados.sessionId());
+      sessao.refazer();
+      draftSessaoRepository.salvar(sessao);
+      return montarResposta(sessao);
+    });
+  }
+
+  public Object acessarSessao(DraftSugestaoDto dados) {
+    return montarResposta(buscarSessao(dados.sessionId()));
+  }
+
+  public Object obterSugestao(DraftSugestaoDto dados) {
+    DraftSessao sessao = buscarSessao(dados.sessionId());
+    if (sessao.getFaseAtual() == Fase.FIM) {
+      return Map.of("champion", List.of());
+    }
+    SugestaoResponseDto resposta = pythonClient.pedirSugestao(montarRequest(sessao, "PLAYER"));
+    return Map.of("champion", resposta.champion());
+  }
+
+  private <T> T comTrava(String sessionId, Supplier<T> acao) {
     if (sessoesOcupadas.putIfAbsent(sessionId, true) != null) {
       throw new AcaoEmAndamentoException("Ação já em andamento para essa sessão");
     }
-    try{
-      DraftAcaoDto dadosParaEnviar = dados;
-      if(dados.champion() != null){
-        if(!championService.existe(dados.champion())){
-          throw new IllegalArgumentException("Campeão não encontrado: " + dados.champion());
-        }
-      String campeao = championService.normalizar(dados.champion());
-      dadosParaEnviar = new DraftAcaoDto(dados.sessionId(), campeao);
+    try {
+      return acao.get();
+    } finally {
+      sessoesOcupadas.remove(sessionId);
+    }
+  }
+
+  private DraftSessao buscarSessao(String sessionId) {
+    DraftSessao sessao = draftSessaoRepository.buscar(sessionId);
+    if (sessao == null) {
+      throw new IllegalArgumentException("Sessão não encontrada");
+    }
+    return sessao;
+  }
+
+  private void aplicarAcao(DraftSessao sessao, String jogador, boolean isBan, String champion) {
+    if (jogador.equals("PLAYER")) {
+      if (isBan) {
+        sessao.adicionarBanUser(champion);
+      } else {
+        sessao.adicionarPickUser(champion);
+        sessao.adicionarFearless(champion);
       }
-
-    try {
-        return pythonClient.alterarDraft(dados);
-    } catch (FeignException.NotFound e) {
-      throw new IllegalArgumentException("Sessão não encontrada");
+    } else {
+      if (isBan) {
+        sessao.adicionarBanIA(champion);
+      } else {
+        sessao.adicionarPickIA(champion);
+        sessao.adicionarFearless(champion);
+      }
     }
-  } finally{
-    sessoesOcupadas.remove(sessionId);
-  }
   }
 
-  public Object proxJogo(DraftProxJogoDto dados){
-    try {
-        return pythonClient.proxJogo(dados);
-    } catch (FeignException.NotFound e) {
-      throw new IllegalArgumentException("Sessão não encontrada");
+  private DraftSugestaoRequestDto montarRequest(DraftSessao sessao, String jogadorAtual) {
+    return new DraftSugestaoRequestDto(
+      sessao.getTimeUser(), sessao.getBansUser(), sessao.getPicksUser(),
+      sessao.getTimeIA(), sessao.getBansIA(), sessao.getPicksIA(),
+      sessao.getFearless(), sessao.isFirstPick(),
+      sessao.getFaseAtual().name(), jogadorAtual
+    );
+  }
+
+  private String primeiroCampeao(Object champion) {
+    if (champion instanceof List<?> lista) {
+      if (lista.isEmpty()) {
+        throw new IllegalStateException("A IA não retornou nenhuma sugestão");
+      }
+      return String.valueOf(lista.get(0));
     }
+    return String.valueOf(champion);
+  }
+
+  private String calcularJogadorAtual(DraftSessao sessao) {
+    Fase fase = sessao.getFaseAtual();
+    if (fase == Fase.FIM) {
+      return "FIM";
+    }
+    return (fase.getIsFirstPick() == sessao.isFirstPick()) ? "PLAYER" : "IA";
+  }
+
+  private boolean temMaisJogos(DraftSessao sessao) {
+    return !(sessao.getGameAtual() == sessao.getTotalJogos() && sessao.getFaseAtual() == Fase.FIM);
+  }
+
+  private Map<String, Object> montarResposta(DraftSessao sessao) {
+    Map<String, Object> resposta = new LinkedHashMap<>();
+    resposta.put("sessionId", sessao.getSessionId());
+    resposta.put("faseAtual", sessao.getFaseAtual().name());
+    resposta.put("jogadorAtual", calcularJogadorAtual(sessao));
+    resposta.put("gameAtual", sessao.getGameAtual());
+    resposta.put("bansPlayer", sessao.getBansUser());
+    resposta.put("bansIA", sessao.getBansIA());
+    resposta.put("picksPlayer", sessao.getPicksUser());
+    resposta.put("picksIA", sessao.getPicksIA());
+    resposta.put("fearless", sessao.getFearless());
+    resposta.put("temMaisJogos", temMaisJogos(sessao));
+    resposta.put("podeDesfazer", sessao.podeDesfazer());
+    resposta.put("podeRefazer", sessao.podeRefazer());
+    return resposta;
   }
 
   public List<String> listarTimesPorLiga(String liga){
