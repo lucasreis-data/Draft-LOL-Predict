@@ -155,8 +155,13 @@ public class DraftService {
     if (sessao.getFaseAtual() == Fase.FIM) {
       return Map.of("champion", List.of());
     }
-    SugestaoResponseDto resposta = pythonClient.pedirSugestao(montarRequest(sessao, "PLAYER"));
-    return Map.of("champion", resposta.champion());
+    String jogadorAtual = calcularJogadorAtual(sessao);
+    boolean isBan = sessao.getFaseAtual().name().startsWith("BAN");
+    SugestaoResponseDto resposta = pythonClient.pedirSugestao(montarRequest(sessao, jogadorAtual));
+    return Map.of("champion", resposta.champion(), 
+      "tipo", isBan ? "BAN" : "PICK",
+      "jogador", jogadorAtual
+    );
   }
 
   private <T> T comTrava(String sessionId, Supplier<T> acao) {
