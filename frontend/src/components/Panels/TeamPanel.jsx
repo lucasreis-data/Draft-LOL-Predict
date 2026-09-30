@@ -15,14 +15,13 @@ export default function TeamPanel({ side, team, picks, bans, isTurn }) {
   if (!team) return null;
 
   const isBlue = side === 'blue';
+  const turnClass = isTurn ? (isBlue ? 'is-turn-active is-blue-side' : 'is-turn-active is-red-side') : '';
   
-  // Create 5 pick slots
   const renderRoster = () => {
     return ROLES.map((r, i) => {
       const champ = picks[i];
       const role = r.id;
       const isFilled = !!champ;
-      const bgStyle = isFilled ? {} : {};
 
       return (
         <div key={role} className={`role-row ${isFilled ? 'filled' : ''}`}>
@@ -63,12 +62,19 @@ export default function TeamPanel({ side, team, picks, bans, isTurn }) {
     return slots;
   };
 
+  const renderBadge = () => {
+    if (team.logo) {
+      return <img className="team-logo-img" src={team.logo} alt={team.name} />;
+    }
+    return <span className="badge-fallback">{team.name.substring(0,3).toUpperCase()}</span>;
+  };
+
   return (
-    <div className={`side ${side}`} id={isBlue ? 'sideBlue' : 'sideRed'}>
+    <div className={`side ${side} ${turnClass}`} id={isBlue ? 'sideBlue' : 'sideRed'}>
       <div className="side-head">
         {isBlue && (
           <div className="team-badge" id="teamBadgeBlue">
-            <span className="badge-fallback">{team.name.substring(0,3).toUpperCase()}</span>
+            {renderBadge()}
           </div>
         )}
         {!isBlue && (
@@ -85,7 +91,7 @@ export default function TeamPanel({ side, team, picks, bans, isTurn }) {
         )}
         {!isBlue && (
           <div className="team-badge" id="teamBadgeRed">
-            <span className="badge-fallback">{team.name.substring(0,3).toUpperCase()}</span>
+            {renderBadge()}
           </div>
         )}
       </div>

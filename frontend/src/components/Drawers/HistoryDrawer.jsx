@@ -42,9 +42,6 @@ export default function HistoryDrawer({ open, onClose, history }) {
           )}
         </div>
       </div>
-      <div className={`drawer-tab ${open ? 'panel-open' : ''}`} id="historicoTab" title="Abrir/fechar histórico da série" onClick={onClose}>
-        {open ? '‹ Fechar' : 'Histórico ›'}
-      </div>
     </>
   );
 }

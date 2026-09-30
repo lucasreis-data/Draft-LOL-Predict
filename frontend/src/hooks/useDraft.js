@@ -20,7 +20,7 @@ export function useDraft(series) {
       .catch(console.error);
       
     draftService.getChampions()
-      .then(res => setChampions(res))
+      .then(res => setChampions(res.map(nome => ({ name: nome }))))
       .catch(console.error);
   }, []);
 

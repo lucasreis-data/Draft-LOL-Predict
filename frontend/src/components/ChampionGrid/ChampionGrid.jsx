@@ -12,7 +12,7 @@ export default function ChampionGrid({
   isTurnForPlayer 
 }) {
 
-  const top3 = (suggestionsOn && isTurnForPlayer) ? suggestions.campeoes : [];
+  const top3 = suggestionsOn ? (suggestions.campeoes || []) : [];
   const ehSugestaoDeBan = suggestionsOn && suggestions.tipo === 'ban';
 
   const filtered = champions.filter(c => fuzzyMatch(searchQuery, c.name));

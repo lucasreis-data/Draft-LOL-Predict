@@ -5,7 +5,6 @@ import { useDraft } from './hooks/useDraft';
 import ConfigModal from './components/Modals/ConfigModal';
 import FirstPickModal from './components/Modals/FirstPickModal';
 import EndSeriesModal from './components/Modals/EndSeriesModal';
-import TopBar from './components/TopBar/TopBar';
 import BottomBar from './components/BottomBar/BottomBar';
 import TeamPanel from './components/Panels/TeamPanel';
 import ChampionGrid from './components/ChampionGrid/ChampionGrid';
@@ -39,7 +38,6 @@ export default function App() {
   const draftAcabou = stepIndex >= DRAFT_ORDER.length;
   const isPlayerFP = series.teamOnSide[series.ladoFirstPick]?.key === series.time1?.key;
   
-  // Resolve current active side
   let activeSide = null;
   if (!draftAcabou) {
     const step = DRAFT_ORDER[stepIndex];
@@ -50,7 +48,6 @@ export default function App() {
     }
   }
 
-  // Derive bans and picks by side
   const bansPlayer = draft.dadosDraft?.bansPlayer || [];
   const bansIA = draft.dadosDraft?.bansIA || [];
   const picksPlayer = draft.dadosDraft?.picksPlayer || [];
@@ -123,28 +120,56 @@ export default function App() {
         onRestart={() => { series.resetSeries(); }} 
       />
 
-      <TopBar 
-        liga={series.liga} 
-        formato={series.formato} 
-        onRestartDraft={() => { if(window.confirm('Reiniciar o draft deste jogo?')) draft.reiniciarJogoAtual(); }}
-        onBackToConfig={() => { if(window.confirm('Voltar para a configuração da série?')) series.setShowConfigModal(true); }}
-        stepIndex={stepIndex}
-      />
-
+      {/* ---- BARRA DE NAVEGAÇÃO DO JOGO ---- */}
       <div className="gamenav">
+        {/* Esquerda: Liga e formato */}
+        <div className="gamenav-left">
+          <span className="gamenav-liga">{series.liga}</span>
+          <span className="gamenav-sep">|</span>
+          <span className="gamenav-formato">MD{series.formato}</span>
+        </div>
+
+        {/* Centro: Ação atual */}
         <div className={`current-action ${draftAcabou || (DRAFT_ORDER[stepIndex]?.type === 'pick') ? 'fase-pick' : ''}`} id="currentActionBanner">
           <span className="ic" id="currentActionIcon">{draftAcabou ? '🏁' : (DRAFT_ORDER[stepIndex]?.type === 'pick' ? '⚔' : '🔒')}</span>
           Ação atual: <b id="actionLabel">{actionLabel()}</b>
         </div>
-      </div>
 
-      <div className="ban-progress">
-        <span className="val" id="banClock">{draftAcabou ? 0 : 59}</span>
-        <div className="bar-track">
-          <div className="bar-fill" style={{ width: draftAcabou ? '0%' : '100%', background: activeSide === 'red' ? 'var(--red)' : 'var(--blue)' }} id="barFill"></div>
+        {/* Direita: Ações de controle */}
+        <div className="gamenav-right">
+          <div className="icon-btn" title="Reiniciar draft deste jogo" onClick={() => { if(window.confirm('Reiniciar o draft deste jogo?')) draft.reiniciarJogoAtual(); }}>↺</div>
+          <div className="icon-btn" title="Voltar à configuração da série" onClick={() => { if(window.confirm('Voltar para a configuração da série?')) series.setShowConfigModal(true); }}>🏠</div>
         </div>
       </div>
 
+      {/* ---- BARRA DE INFO (Jogo atual, Próximo Jogo, Sugestões) ---- */}
+      <div className="center-info-bar">
+        <div className="bb-center">
+          <span className="series-label">Jogo: <span id="gameCur">{series.jogoAtual}</span>/<span id="gameTot">{series.formato}</span></span>
+          <div className="series-dots" id="seriesDots">
+            {Array.from({length: series.formato}).map((_, i) => (
+              <span key={i} className={i < series.jogoAtual - 1 ? 'done' : (i === series.jogoAtual - 1 ? 'current' : '')}></span>
+            ))}
+          </div>
+        </div>
+        
+        <div className="bb-actions">
+          <div 
+            className={`bb-btn ${draftAcabou && (series.jogoAtual < series.formato) ? 'pulse-accent' : 'disabled-btn'}`} 
+            id="nextGameBtn"
+            onClick={draftAcabou && (series.jogoAtual < series.formato) ? handleNextGameAction : undefined}
+          >
+            {(series.jogoAtual >= series.formato) ? 'Série Finalizada' : 'Próximo Jogo ▶'}
+          </div>
+        </div>
+
+        <div className="bb-right">
+          <span className="switch-label">Destacar sugestões no grid</span>
+          <div className={`switch ${suggestionsOn ? 'on' : ''}`} id="togglePickSuggest" onClick={() => setSuggestionsOn(!suggestionsOn)}></div>
+        </div>
+      </div>
+
+      {/* ---- ÁREA PRINCIPAL (Times + Grid) ---- */}
       <div className="main">
         <TeamPanel 
           side="blue" 
@@ -214,16 +239,12 @@ export default function App() {
         />
       </div>
 
+      {/* ---- BARRA INFERIOR ---- */}
       <BottomBar 
-        nextGameAction={handleNextGameAction}
-        isDraftFinished={draftAcabou}
-        gameCur={series.jogoAtual}
-        gameTot={series.formato}
-        isSeriesFinished={series.jogoAtual >= series.formato}
-        suggestionsOn={suggestionsOn}
-        onToggleSuggestions={() => setSuggestionsOn(!suggestionsOn)}
+        onOpenHistory={() => setHistoryPanelOpen(!historyPanelOpen)}
       />
 
+      {/* ---- PAINÉIS LATERAIS ---- */}
       <SuggestionDrawer 
         open={iaPanelOpen} 
         onClose={() => setIaPanelOpen(!iaPanelOpen)} 
