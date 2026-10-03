@@ -118,7 +118,7 @@ export default function App() {
         onRestart={() => { series.resetSeries(); }} 
       />
 
-      {/* ---- BARRA DE NAVEGAÇÃO DO JOGO ---- */}
+            {/* ---- BARRA DE NAVEGAÇÃO DO JOGO ---- */}
       <div className="gamenav">
         {/* Esquerda: Liga e formato */}
         <div className="gamenav-left">
@@ -127,10 +127,31 @@ export default function App() {
           <span className="gamenav-formato">MD{series.formato}</span>
         </div>
 
-        {/* Centro: Ação atual */}
-        <div className={`current-action ${draftAcabou || (DRAFT_ORDER[stepIndex]?.type === 'pick') ? 'fase-pick' : ''}`} id="currentActionBanner">
-          <span className="ic" id="currentActionIcon">{draftAcabou ? '🏁' : (DRAFT_ORDER[stepIndex]?.type === 'pick' ? '⚔' : '🔒')}</span>
-          Ação atual: <b id="actionLabel">{actionLabel()}</b>
+        {/* Centro: Jogo, Próximo Jogo, Destacar sugestões */}
+        <div className="gamenav-center">
+          <div className="bb-center">
+            <span className="series-label">Jogo: <span id="gameCur">{series.jogoAtual}</span>/<span id="gameTot">{series.formato}</span></span>
+            <div className="series-dots" id="seriesDots">
+              {Array.from({length: series.formato}).map((_, i) => (
+                <span key={i} className={i < series.jogoAtual - 1 ? 'done' : (i === series.jogoAtual - 1 ? 'current' : '')}></span>
+              ))}
+            </div>
+          </div>
+
+          <div className="bb-actions">
+            <div 
+              className={`bb-btn ${draftAcabou && (series.jogoAtual < series.formato) ? 'pulse-accent' : 'disabled-btn'}`} 
+              id="nextGameBtn"
+              onClick={draftAcabou && (series.jogoAtual < series.formato) ? handleNextGameAction : undefined}
+            >
+              {(series.jogoAtual >= series.formato) ? 'Série Finalizada' : 'Próximo Jogo ▶'}
+            </div>
+          </div>
+
+          <div className="bb-right">
+            <span className="switch-label">Destacar sugestões no grid</span>
+            <div className={`switch ${suggestionsOn ? 'on' : ''}`} id="togglePickSuggest" onClick={() => setSuggestionsOn(!suggestionsOn)}></div>
+          </div>
         </div>
 
         {/* Direita: Ações de controle */}
@@ -140,30 +161,11 @@ export default function App() {
         </div>
       </div>
 
-      {/* ---- BARRA DE INFO (Jogo atual, Próximo Jogo, Sugestões) ---- */}
+      {/* ---- BARRA DE AÇÃO ATUAL ---- */}
       <div className="center-info-bar">
-        <div className="bb-center">
-          <span className="series-label">Jogo: <span id="gameCur">{series.jogoAtual}</span>/<span id="gameTot">{series.formato}</span></span>
-          <div className="series-dots" id="seriesDots">
-            {Array.from({length: series.formato}).map((_, i) => (
-              <span key={i} className={i < series.jogoAtual - 1 ? 'done' : (i === series.jogoAtual - 1 ? 'current' : '')}></span>
-            ))}
-          </div>
-        </div>
-        
-        <div className="bb-actions">
-          <div 
-            className={`bb-btn ${draftAcabou && (series.jogoAtual < series.formato) ? 'pulse-accent' : 'disabled-btn'}`} 
-            id="nextGameBtn"
-            onClick={draftAcabou && (series.jogoAtual < series.formato) ? handleNextGameAction : undefined}
-          >
-            {(series.jogoAtual >= series.formato) ? 'Série Finalizada' : 'Próximo Jogo ▶'}
-          </div>
-        </div>
-
-        <div className="bb-right">
-          <span className="switch-label">Destacar sugestões no grid</span>
-          <div className={`switch ${suggestionsOn ? 'on' : ''}`} id="togglePickSuggest" onClick={() => setSuggestionsOn(!suggestionsOn)}></div>
+        <div className={`current-action ${draftAcabou || (DRAFT_ORDER[stepIndex]?.type === 'pick') ? 'fase-pick' : ''}`} id="currentActionBanner">
+          <span className="ic" id="currentActionIcon">{draftAcabou ? '🏁' : (DRAFT_ORDER[stepIndex]?.type === 'pick' ? '⚔' : '🔒')}</span>
+          Ação atual: <b id="actionLabel">{actionLabel()}</b>
         </div>
       </div>
 
