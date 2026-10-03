@@ -8,7 +8,6 @@ import EndSeriesModal from './components/Modals/EndSeriesModal';
 import BottomBar from './components/BottomBar/BottomBar';
 import TeamPanel from './components/Panels/TeamPanel';
 import ChampionGrid from './components/ChampionGrid/ChampionGrid';
-import SuggestionDrawer from './components/Drawers/SuggestionDrawer';
 import HistoryDrawer from './components/Drawers/HistoryDrawer';
 
 import './App.css';
@@ -26,7 +25,6 @@ export default function App() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestionsOn, setSuggestionsOn] = useState(true);
-  const [iaPanelOpen, setIaPanelOpen] = useState(false);
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
   const [activeRole, setActiveRole] = useState('all');
 
@@ -244,15 +242,6 @@ export default function App() {
         onOpenHistory={() => setHistoryPanelOpen(!historyPanelOpen)}
       />
 
-      {/* ---- PAINÉIS LATERAIS ---- */}
-      <SuggestionDrawer 
-        open={iaPanelOpen} 
-        onClose={() => setIaPanelOpen(!iaPanelOpen)} 
-        suggestions={draft.sugestaoIA} 
-        isPlayerTurn={isPlayerTurn}
-        playerTeamName={series.time1?.name}
-      />
-      
       <HistoryDrawer 
         open={historyPanelOpen} 
         onClose={() => setHistoryPanelOpen(!historyPanelOpen)} 

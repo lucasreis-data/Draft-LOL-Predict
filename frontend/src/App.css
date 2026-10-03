@@ -288,6 +288,7 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
 .side.red .role-row { flex-direction: row-reverse; text-align: right; }
 .row-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.4; z-index: 0; }
 .role-row.filled { border-color: var(--border-gold); }
+.role-row.filled .row-bg { opacity: 0.55; }
 
 .role-icon {
   width: 24px; height: 24px; border-radius: 50%;
@@ -295,6 +296,7 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
   font-size: 12px; color: var(--bg-primary);
   position: relative; z-index: 2;
   border: 1px solid var(--border-gold);
+  background: var(--border-gold); font-weight: 700;
 }
 .role-row .role-info { flex: 1; z-index: 2; }
 .role-row .role-label { font-size: 10px; color: var(--text-secondary); letter-spacing: .1em; text-transform: uppercase; }
@@ -464,8 +466,7 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
   border-left: 1px solid var(--border-gold-dark);
   border-right: 1px solid var(--border-gold-dark);
 }
-#suggestPanel { right: 0; transform: translateX(100%); }
-#suggestPanel.open { transform: translateX(0); }
+
 #historicoPanel { left: 0; transform: translateX(-100%); }
 #historicoPanel.open { transform: translateX(0); }
 
@@ -477,8 +478,6 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
   transition: all 0.3s ease-in-out;
 }
 .drawer-tab:hover { background: var(--border-gold); color: var(--bg-primary); }
-#iaTab { right: 0; border-radius: 4px 0 0 4px; }
-#iaTab.panel-open { right: 350px; }
 #historicoTab { left: 0; border-radius: 0 4px 4px 0; }
 #historicoTab.panel-open { left: 350px; }
 

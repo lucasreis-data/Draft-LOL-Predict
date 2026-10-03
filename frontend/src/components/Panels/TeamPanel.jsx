@@ -1,16 +1,7 @@
 import React from 'react';
 import { champImg, champSplash, initials, PALETTE, hashStr } from '../../utils/riot';
 
-const ROLES = [
-  {id:'top', label:'Top', color:'var(--r-top)'},
-  {id:'jng', label:'Jng', color:'var(--r-jng)'},
-  {id:'mid', label:'Mid', color:'var(--r-mid)'},
-  {id:'adc', label:'Adc', color:'var(--r-adc)'},
-  {id:'sup', label:'Support', color:'var(--r-sup)'},
-];
-const roleIcon = {top:'⚔', jng:'✳', mid:'✦', adc:'✛', sup:'✚'};
-const roleColorVar = {top:'--r-top', jng:'--r-jng', mid:'--r-mid', adc:'--r-adc', sup:'--r-sup'};
-
+const PICK_SLOTS = [1, 2, 3, 4, 5];
 export default function TeamPanel({ side, team, picks, bans, isTurn }) {
   if (!team) return null;
 
@@ -18,31 +9,22 @@ export default function TeamPanel({ side, team, picks, bans, isTurn }) {
   const turnClass = isTurn ? (isBlue ? 'is-turn-active is-blue-side' : 'is-turn-active is-red-side') : '';
   
   const renderRoster = () => {
-    return ROLES.map((r, i) => {
-      const champ = picks[i];
-      const role = r.id;
-      const isFilled = !!champ;
+  return PICK_SLOTS.map((n, i) => {
+    const champ = picks[i];
+    const isFilled = !!champ;
 
-      return (
-        <div key={role} className={`role-row ${isFilled ? 'filled' : ''}`}>
-          {isFilled && <img className="row-bg" alt="" loading="lazy" src={champSplash(champ)} />}
-          <div className="role-icon" style={{background: `var(${roleColorVar[role]})`}}>{roleIcon[role]}</div>
-          <div className="role-info">
-            <div className="role-label">{r.label}</div>
-            <div className="player-name">Jogador {i+1}</div>
-          </div>
-          {isFilled ? (
-            <div className="champ-slot" style={{background: PALETTE[hashStr(champ) % PALETTE.length]}}>
-              <span className="slot-fallback">{initials(champ)}</span>
-              <img className="slot-img" src={champImg(champ)} alt="" loading="lazy" />
-            </div>
-          ) : (
-            <div className="champ-slot">—</div>
-          )}
+    return (
+      <div key={n} className={`role-row ${isFilled ? 'filled' : ''}`}>
+        {isFilled && <img className="row-bg" alt="" loading="lazy" src={champSplash(champ)} />}
+        <div className="role-icon">{n}</div>
+        <div className="role-info">
+          <div className="role-label">Pick {n}</div>
+          <div className="player-name">{isFilled ? champ : '—'}</div>
         </div>
-      );
-    });
-  };
+      </div>
+    );
+  });
+};
 
   const renderBans = () => {
     const slots = [];
