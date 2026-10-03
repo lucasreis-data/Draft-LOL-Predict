@@ -1,8 +1,10 @@
 import React from 'react';
 import { champImg, champSplash, initials, PALETTE, hashStr } from '../../utils/riot';
+import { useTeamLogo } from '../../hooks/useTeamLogos';
 
 const PICK_SLOTS = [1, 2, 3, 4, 5];
 export default function TeamPanel({ side, team, picks, bans, isTurn }) {
+  const logo = useTeamLogo(team?.name);
   if (!team) return null;
 
   const isBlue = side === 'blue';
@@ -45,8 +47,8 @@ export default function TeamPanel({ side, team, picks, bans, isTurn }) {
   };
 
   const renderBadge = () => {
-    if (team.logo) {
-      return <img className="team-logo-img" src={team.logo} alt={team.name} />;
+    if (logo) {
+      return <img className="team-logo-img" src={logo} alt={team.name} />;
     }
     return <span className="badge-fallback">{team.name.substring(0,3).toUpperCase()}</span>;
   };
@@ -55,24 +57,17 @@ export default function TeamPanel({ side, team, picks, bans, isTurn }) {
     <div className={`side ${side} ${turnClass}`} id={isBlue ? 'sideBlue' : 'sideRed'}>
       <div className="side-head">
         {isBlue && (
-          <div className="team-badge" id="teamBadgeBlue">
+          <div className={`team-badge ${logo ? 'has-logo' : ''}`} id="teamBadgeBlue">
             {renderBadge()}
           </div>
-        )}
-        {!isBlue && (
-          <div className={`turn-flag ${isTurn ? 'active' : ''}`}>▶</div>
-        )}
-        
+        )}  
         <div className="meta">
           <div className="team-name">{team.name}</div>
           <div className="label side-tag">{isBlue ? 'Blue Side' : 'Red Side'}</div>
         </div>
         
-        {isBlue && (
-          <div className={`turn-flag ${isTurn ? 'active' : ''}`}>▶</div>
-        )}
         {!isBlue && (
-          <div className="team-badge" id="teamBadgeRed">
+          <div className={`team-badge ${logo ? 'has-logo' : ''}`} id="teamBadgeRed">
             {renderBadge()}
           </div>
         )}

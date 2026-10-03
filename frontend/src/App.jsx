@@ -26,7 +26,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestionsOn, setSuggestionsOn] = useState(true);
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
-  const [activeRole, setActiveRole] = useState('all');
+  const [activeRole, setActiveRole] = useState(null);
 
   const stepIndex = (draft.dadosDraft?.bansPlayer?.length || 0) + 
                     (draft.dadosDraft?.bansIA?.length || 0) + 
@@ -180,20 +180,20 @@ export default function App() {
         <div className="center">
           <div className="tools-row">
             <div className="role-tabs" id="roleTabs">
-              {['all', 'top', 'jng', 'mid', 'adc', 'sup'].map(r => (
+              {['top', 'jng', 'mid', 'adc', 'sup'].map(r => (
                 <div key={r} className={`role-tab ${activeRole === r ? 'active' : ''}`} onClick={() => setActiveRole(r)}>
-                  {r === 'all' ? 'Todos' : r.charAt(0).toUpperCase() + r.slice(1)}
+                  {r.charAt(0).toUpperCase() + r.slice(1)}
                 </div>
               ))}
             </div>
             <div className="search-wrap">
               <span className="ic">⌕</span>
-              <input type="text" id="searchInput" placeholder="Buscar campeão... (ex: gp, mf)" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+              <input type="text" id="searchInput" placeholder="Buscar campeão..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
             </div>
             <button 
               type="button" 
-              className={`confirm-pick-btn ${draft.pendingChampion ? 'ready' : ''}`} 
-              disabled={!draft.pendingChampion || draft.loading} 
+              className={`confirm-pick-btn ${draft.pendingChampion && !draftAcabou ? 'ready' : ''}`}
+              disabled={!draft.pendingChampion || draft.loading || draftAcabou} 
               onClick={draft.confirmarSelecao}
             >
               Confirmar

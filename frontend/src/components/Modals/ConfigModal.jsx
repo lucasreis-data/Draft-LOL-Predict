@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { draftService } from '../../service/DraftService';
+import { useTeamLogo } from '../../hooks/useTeamLogos';
+
+function TeamAvatar({ team }) {
+  const logo = useTeamLogo(team?.name);
+  if (logo) return <img src={logo} alt={team.name} style={{width:'100%', height:'100%', objectFit:'contain'}} />;
+  return <span className="tp-avatar-fallback">{team?.short || '?'}</span>;
+}
 
 export default function ConfigModal({ show, ligas, onConfirm }) {
   const [ligaEscolhida, setLigaEscolhida] = useState('');
@@ -40,7 +47,7 @@ export default function ConfigModal({ show, ligas, onConfirm }) {
             <div className={`team-picker-card ${time1 ? 'chosen' : ''}`} id="teamCard1">
               <div className="team-picker-label">TIME 1</div>
               <div className="team-picker-avatar" id="teamAvatar1">
-                <span className="tp-avatar-fallback">{times.find(t => t.key === time1)?.short || '?'}</span>
+                <TeamAvatar team={times.find(t => t.key === time1)} />
               </div>
               <div className="team-picker-status" id="teamStatus1">{time1 ? times.find(t => t.key === time1)?.name : 'Nenhum time selecionado'}</div>
               <select className="modal-select" id="modalTime1" disabled={!ligaEscolhida} value={time1} onChange={e => setTime1(e.target.value)}>
@@ -54,7 +61,7 @@ export default function ConfigModal({ show, ligas, onConfirm }) {
             <div className={`team-picker-card ${time2 ? 'chosen' : ''}`} id="teamCard2">
               <div className="team-picker-label">TIME 2</div>
               <div className="team-picker-avatar" id="teamAvatar2">
-                <span className="tp-avatar-fallback">{times.find(t => t.key === time2)?.short || '?'}</span>
+                <TeamAvatar team={times.find(t => t.key === time2)} />
               </div>
               <div className="team-picker-status" id="teamStatus2">{time2 ? times.find(t => t.key === time2)?.name : 'Nenhum time selecionado'}</div>
               <select className="modal-select" id="modalTime2" disabled={!ligaEscolhida} value={time2} onChange={e => setTime2(e.target.value)}>

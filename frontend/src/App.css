@@ -170,7 +170,7 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
 /* ---------- MAIN GRID ---------- */
 .main {
   display: grid;
-  grid-template-columns: 300px 1fr 300px;
+  grid-template-columns: 380px 1fr 380px;
   gap: 15px;
   align-items: start;
 }
@@ -245,7 +245,7 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
 
 /* Logo do time dentro do badge */
 .team-logo-img {
-  width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
+  width: 100%; height: 100%; object-fit: contain;
 }
 
 .side-head { display: flex; align-items: center; gap: 10px; }
@@ -256,6 +256,7 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
   font-family: 'Cinzel', serif; font-weight: 700; font-size: 20px;
   background: var(--bg-primary);
 }
+.team-badge.has-logo { border: none !important; background: transparent; border-radius: 0; }
 .side.blue .team-badge { color: var(--color-blue-side); border: 1px solid var(--color-blue-side); }
 .side.red .team-badge { color: var(--color-red-side); border: 1px solid var(--color-red-side); }
 
@@ -282,11 +283,11 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
   border-radius: var(--radius-sm);
   background: var(--panel-3);
   border: 1px solid var(--border-gold-dark);
-  min-height: 60px;
+  min-height: 75px;
   position: relative; overflow: hidden;
 }
 .side.red .role-row { flex-direction: row-reverse; text-align: right; }
-.row-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.4; z-index: 0; }
+.row-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 20%; opacity: 0.4; z-index: 0; }
 .role-row.filled { border-color: var(--border-gold); }
 .role-row.filled .row-bg { opacity: 0.55; }
 
@@ -329,14 +330,7 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
   display: flex; align-items: center; justify-content: center;
   position: relative; overflow: hidden;
 }
-.ban-slot.filled { border-color: var(--status-banned-accent); }
-.ban-slot.filled::before {
-  content: ''; position: absolute; z-index: 3;
-  width: 140%; height: 2px;
-  background: var(--status-banned-accent);
-  transform: rotate(-45deg);
-  box-shadow: 0 0 5px rgba(232, 64, 87, 0.8);
-}
+
 .ban-slot .slot-img { filter: grayscale(100%) brightness(60%); }
 
 /* ---------- CENTER DRAFT AREA ---------- */
@@ -391,7 +385,7 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
 .champ-grid-shell { position: relative; }
 .champ-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
   gap: 8px; max-height: 60vh; overflow-y: auto; padding: 4px;
 }
 .champ-grid::-webkit-scrollbar { width: 6px; }
@@ -422,7 +416,7 @@ h1, h2, h3, h4, h5, h6, .modal-title, .team-name, .label, .val, .team-picker-lab
 .champ-card .portrait-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .champ-card .name {
   position: relative; z-index: 1; width: 100%;
-  font-size: 10px; font-weight: 600; text-align: center;
+  font-size: 9px; font-weight: 600; text-align: center;
   padding: 4px 2px; color: var(--text-title);
   background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
 }

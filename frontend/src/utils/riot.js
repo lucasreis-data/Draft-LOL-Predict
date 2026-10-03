@@ -1,6 +1,6 @@
 const RIOT_VERSION = '16.18.1';
 const RIOT_ID_MAP = {
-  "Bel'Veth": 'Belveth', "Cho'Gath": 'Chogath', "Kai'Sa": 'Kaisa', "Vel'Koz": 'Velkoz',
+  "Bel'Veth": 'Belveth', "Cho'Gath": 'Chogath', "Kai'Sa": 'Kaisa', "Kha'Zix": 'Khazix', "Vel'Koz": 'Velkoz',
   'LeBlanc': 'Leblanc', 'Wukong': 'MonkeyKing', 'Nunu & Willump': 'Nunu', 'Renata Glasc': 'Renata',
 };
 
