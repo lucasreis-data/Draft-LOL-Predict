@@ -61,6 +61,7 @@ public class DraftSessao {
     this.gameAtual++;
     this.isFirstPick = isFirstPick;
     this.faseAtual = Fase.BAN_1;
+    this.fearlessInicioJogo = new ArrayList<>(this.fearless);
     this.picksUser = new ArrayList<>();
     this.picksIA = new ArrayList<>();
     this.bansUser = new ArrayList<>();
