@@ -1,16 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function FirstPickModal({ show, gameNum, time1, time2, onConfirm }) {
   const [sideEscolhido, setSideEscolhido] = useState(null);
   const [fpEscolhido, setFpEscolhido] = useState(null);
 
-  if (!show) return null;
+  useEffect(() => {
+    if (show) {
+      setSideEscolhido(null);
+      setFpEscolhido(null);
+    }
+  }, [show]);
 
-  // Assuming time1 is chooser in odd games, time2 in even games
-  const chooser = gameNum % 2 !== 0 ? time1 : time2;
-  const other = gameNum % 2 !== 0 ? time2 : time1;
+  if (!show) return null;
+  const chooserIsTime1 = gameNum % 2 !== 0;
+  const chooser = chooserIsTime1 ? time1 : time2;
+  const other = chooserIsTime1 ? time2 : time1;
 
   const valid = sideEscolhido && fpEscolhido;
+
+  const handleConfirm = () => {
+    const chooserTemFP = fpEscolhido === 'chooser';
+    const outroLado = (s) => (s === 'blue' ? 'red' : 'blue');
+
+    const sideTime1 = chooserIsTime1 ? sideEscolhido : outroLado(sideEscolhido);
+    const time1TemFP = chooserIsTime1 ? chooserTemFP : !chooserTemFP;
+
+    onConfirm(sideTime1, time1TemFP);
+  };
+  
 
   return (
     <div className="modal-overlay show" id="fpModal">
@@ -35,7 +52,7 @@ export default function FirstPickModal({ show, gameNum, time1, time2, onConfirm 
             </div>
           </div>
           
-          <button type="button" className="modal-confirm-btn" id="modalConfirmBtn" disabled={!valid} onClick={() => onConfirm(sideEscolhido, fpEscolhido === 'chooser' ? true : false)}>
+          <button type="button" className="modal-confirm-btn" id="modalConfirmBtn" disabled={!valid} onClick={handleConfirm}>
             Confirmar
           </button>
         </div>
