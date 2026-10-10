@@ -8,11 +8,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import com.lol.draft_lol.DTO.DraftRequestDto;
 import com.lol.draft_lol.DTO.DraftSugestaoRequestDto;
 import com.lol.draft_lol.DTO.SugestaoResponseDto;
 
-@FeignClient(name = "python-ai", url = "http://localhost:5000")
+@FeignClient(name = "python-ai", url = "${PYTHON_API_URL:http://localhost:5000}")
 public interface PythonDraftClient {
 
   @GetMapping("/")
@@ -32,9 +31,6 @@ public interface PythonDraftClient {
 
   @GetMapping("/ligas/disponiveis")
   Object listarLigasDisponiveis();
-
-  @PostMapping("/predict")
-  Object preverDraft(@RequestBody DraftRequestDto dados);
 
   @PostMapping("/draft/sugestao")
   SugestaoResponseDto pedirSugestao(@RequestBody DraftSugestaoRequestDto dados);

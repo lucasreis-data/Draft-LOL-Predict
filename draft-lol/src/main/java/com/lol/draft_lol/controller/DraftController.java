@@ -6,7 +6,6 @@ import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,12 +21,13 @@ import com.lol.draft_lol.client.PythonDraftClient;
 import com.lol.draft_lol.exception.AcaoEmAndamentoException;
 import com.lol.draft_lol.service.ChampionService;
 import com.lol.draft_lol.service.DraftService;
+import com.lol.draft_lol.service.IpCliente;
 import com.lol.draft_lol.service.TimeService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 
-@CrossOrigin(origins = "http://localhost:5173")
 @RestController
 public class DraftController {
   @Autowired
@@ -41,6 +41,9 @@ public class DraftController {
 
   @Autowired
   private TimeService timeService;
+
+  @Autowired
+  private IpCliente ipCliente;
 
   @GetMapping("/Testar") 
   public String status(){
@@ -94,21 +97,10 @@ public class DraftController {
     return pythonClient.listarLigasDisponiveis();
   }
 
-  @PostMapping("/Prever")
-  public ResponseEntity<Object> prever(@RequestBody @Valid DraftRequestDto request){
-    try{
-      Object resultado = draftService.gerarDraft(request);
-      return ResponseEntity.ok(resultado);
-    } catch(IllegalArgumentException e){
-      return ResponseEntity.badRequest().body(e.getMessage());
-    }
-    
-  }
-
   @PostMapping("/draft/Start")
-  public ResponseEntity<Object> draftInicio(@RequestBody @Valid DraftStartDto request) {
+  public ResponseEntity<Object> draftInicio(@RequestBody @Valid DraftStartDto request, HttpServletRequest http) {
     try {
-      return ResponseEntity.ok(draftService.criarDraft(request));
+      return ResponseEntity.ok(draftService.criarDraft(request, ipCliente.resolver(http)));
     } catch (IllegalArgumentException e) {
       return ResponseEntity.badRequest().body(e.getMessage());
     }
