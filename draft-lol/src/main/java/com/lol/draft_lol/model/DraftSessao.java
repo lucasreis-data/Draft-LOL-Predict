@@ -1,9 +1,11 @@
 package com.lol.draft_lol.model;
 
 import java.util.ArrayDeque;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class DraftSessao {
   private String sessionId;
@@ -20,6 +22,11 @@ public class DraftSessao {
   private List<String> bansIA;
   private List<String> fearless;
   private List<String> fearlessInicioJogo = new ArrayList<>();
+
+  // Controle de abuso e limpeza (nao entram no clonar/historico).
+  private volatile Instant ultimoAcesso = Instant.now();
+  private String ipOrigem;
+  private final AtomicInteger sugestoesUsadas = new AtomicInteger();
 
   private final Deque<DraftSessao> historico = new ArrayDeque<>();
   private final Deque<DraftSessao> pilhaRefazer = new ArrayDeque<>();
@@ -116,6 +123,13 @@ public class DraftSessao {
     this.fearless = new ArrayList<>(outra.fearless);
     this.fearlessInicioJogo = new ArrayList<>(outra.fearlessInicioJogo);
   }
+
+  public void tocar() { this.ultimoAcesso = Instant.now(); }
+  public Instant getUltimoAcesso() { return ultimoAcesso; }
+  public String getIpOrigem() { return ipOrigem; }
+  public void setIpOrigem(String ipOrigem) { this.ipOrigem = ipOrigem; }
+  /** Conta mais uma sugestao pedida e devolve o total ja usado (inclui esta). */
+  public int registrarSugestao() { return sugestoesUsadas.incrementAndGet(); }
 
   public String getSessionId() { return sessionId; }
   public int getTotalJogos() { return totalJogos; }

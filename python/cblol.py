@@ -2426,48 +2426,4 @@ def ordemPicksBans(timeFP, timeLP, jogos, picks = None):
   
   return [jogo_atual]
 
-# %%
-times_liga_ativa = tabela_liga_ativa["teamname"].unique()
-
-print(times_liga_ativa)
-
-# %%
-time1 = "LOUD"
-time2 = "paiN Gaming"
-
-historico_fearless = []
-
-resultado_serie = ordemPicksBans(time1, time2, 1)
-
-for i, jogo in enumerate(resultado_serie):
-    pFP, bFP, pLP, bLP = jogo
-
-    picks_do_jogo = pFP + pLP
-    historico_fearless.extend(picks_do_jogo)
-
-    # Quem era FP nesse jogo? Alterna a cada jogo
-    if i % 2 == 0:
-        nome_fp, nome_lp = time1, time2
-    else:
-        nome_fp, nome_lp = time2, time1
-
-    print(f"{'#'*2}  JOGO {i + 1}  {'#'*1}")
-
-    print(f"🚫 BANS: {nome_fp}: {', '.join(bFP)} | {nome_lp}: {', '.join(bLP)}")
-
-    print(f"{'='*16} ⚔️  COMPOSIÇÕES FINAIS ⚔️  {'='*16}")
-    print(f"{nome_fp:<28} | {nome_lp:>28}")
-    print("-" * 60)
-    for j in range(5):
-        c1 = pFP[j] if j < len(pFP) else "---"
-        c2 = pLP[j] if j < len(pLP) else "---"
-        print(f"P{j+1}: {c1:<24} | P{j+1}: {c2:>24}")
-    print("-" * 60)
-
-    if i > 0:
-        usados_antes = historico_fearless[:-10]
-        print(f"⚠️  FEARLESS (Já usados na série):")
-        print(f"[{', '.join(usados_antes)}]")
-        print("-" * 60)
-
 

@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.lol.draft_lol.DTO.DraftAcaoDto;
@@ -19,6 +20,7 @@ import com.lol.draft_lol.DTO.DraftSugestaoRequestDto;
 import com.lol.draft_lol.DTO.SugestaoResponseDto;
 import com.lol.draft_lol.client.PythonDraftClient;
 import com.lol.draft_lol.exception.AcaoEmAndamentoException;
+import com.lol.draft_lol.exception.LimiteExcedidoException;
 import com.lol.draft_lol.model.DraftSessao;
 import com.lol.draft_lol.model.Fase;
 import com.lol.draft_lol.repository.DraftSessaoRepository;
@@ -35,23 +37,14 @@ public class DraftService {
   @Autowired
   private DraftSessaoRepository draftSessaoRepository;
 
+  @Value("${draft.limite-sugestoes-por-sessao:100}")
+  private int limiteSugestoesPorSessao;
+  @Value("${draft.limite-sessoes-por-ip:10}")
+  private int limiteSessoesPorIp;
+
   private final Map<String, Boolean> sessoesOcupadas = new ConcurrentHashMap<>();
 
-  public Object gerarDraft(DraftRequestDto dados) {
-    if (!timeService.existe(dados.timeA())) {
-      throw new IllegalArgumentException("Time não encontrado: " + dados.timeA());
-    }
-    if (!timeService.existe(dados.timeB())) {
-      throw new IllegalArgumentException("Time não encontrado: " + dados.timeB());
-    }
-    String timeA = timeService.normalizar(dados.timeA());
-    String timeB = timeService.normalizar(dados.timeB());
-    DraftRequestDto dadosNormalizados = new DraftRequestDto(timeA, timeB, dados.quantidadeJogos());
-
-    return pythonClient.preverDraft(dadosNormalizados);
-  }
-
-  public Object criarDraft(DraftStartDto dados) {
+  public Object criarDraft(DraftStartDto dados, String ipOrigem) {
     String liga = (dados.liga() == null || dados.liga().isBlank())
         ? "CBLOL" : dados.liga().trim().toUpperCase();
     List<String> timesLiga = listarTimesPorLiga(liga);
@@ -73,7 +66,11 @@ public class DraftService {
     DraftSessao sessao = new DraftSessao(
       UUID.randomUUID().toString(), timeUsuario, timeIA, liga, isFirstPick, dados.quantidadeJogos()
     );
-    draftSessaoRepository.salvar(sessao);
+    sessao.setIpOrigem(ipOrigem);
+    if (!draftSessaoRepository.criar(sessao, limiteSessoesPorIp)) {
+      throw new LimiteExcedidoException(
+          "Limite de drafts simultâneos atingido para o seu IP. Finalize um draft ou tente mais tarde.");
+    }
 
     return montarResposta(sessao);
   }
@@ -165,6 +162,9 @@ public class DraftService {
     DraftSessao sessao = buscarSessao(dados.sessionId());
     if (sessao.getFaseAtual() == Fase.FIM) {
       return Map.of("champion", List.of());
+    }
+    if (sessao.registrarSugestao() > limiteSugestoesPorSessao) {
+      throw new LimiteExcedidoException("Limite de sugestões desta sessão atingido");
     }
     String jogadorAtual = calcularJogadorAtual(sessao);
     boolean isBan = sessao.getFaseAtual().name().startsWith("BAN");

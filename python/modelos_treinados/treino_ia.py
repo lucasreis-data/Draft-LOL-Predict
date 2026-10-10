@@ -19,7 +19,7 @@ for l in ligas:
     nome_arquivo = f"modelo_{l.upper()}.joblib" if l else "modelo_GERAL.joblib"
 
     saida = os.path.join(pasta_treino, nome_arquivo)
-    joblib.dump(modelo, saida)
+    joblib.dump(modelo, saida, compress = 3)
 
 carregar_encoders = {
     "cod_camp" : cblol.cod_camp,
