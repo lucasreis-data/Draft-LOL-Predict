@@ -1,22 +1,17 @@
-from fastapi import FastAPI, Body, Query, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Query, HTTPException
 from draft import DraftRequest
 import uvicorn 
 import cblol
 import modelos_cache
 
-# RETIRAR
-from fastapi.middleware.cors import CORSMiddleware
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    ligas = modelos_cache.pre_carregar()
+    print(f"Modelos carregados: {ligas}", flush = True)
+    yield
 
-app = FastAPI()
-
-# RETIRAR 2
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], 
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(lifespan = lifespan, docs_url = None, redoc_url = None, openapi_url = None)
 
 def obter_modelo_sessao(liga: str):
     try:
@@ -28,9 +23,6 @@ def obter_modelo_sessao(liga: str):
 def home():
     return {"status": "Python API is running"}
 
-if __name__ == "__main__":
-    uvicorn.run("api:app", host="0.0.0.0", port=5000, reload=False)
-
 @app.get("/ligas")
 def listar_ligas():
     response = cblol.listar_todas_ligas()
@@ -38,7 +30,7 @@ def listar_ligas():
 
 @app.get("/ligas/disponiveis")
 def listar_ligas_disponiveis():
-    return {"ligas": sorted(modelos_cache.ligas_treinadas)}
+    return {"ligas": modelos_cache.ligas_carregadas()}
 
 @app.get("/times")
 def listar_times(
@@ -141,16 +133,6 @@ def campeao_scout(
 
     return scout
 
-@app.post("/predict")
-def predict(data: dict = Body(...)):
-    time_a = data.get("timeA")
-    time_b = data.get("timeB")
-    jogos = data.get("quantidadeJogos")
-
-    response = cblol.ordemPicksBans(time_a, time_b, jogos, [])
-
-    return {"draft": response}
-
 def montar_args(req: DraftRequest):
     if req.jogador_atual == "IA":
         return (req.time_ia, req.bans_ia, req.picks_ia,
@@ -179,3 +161,6 @@ def acao(req: DraftRequest):
     else: 
         champion = cblol.sugeriPicks(*args, modelo = modelo)
     return{"champion": champion}
+
+if __name__ == "__main__":
+    uvicorn.run("api:app", host="0.0.0.0", port=5000, reload=False)
