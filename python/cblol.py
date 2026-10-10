@@ -478,17 +478,30 @@ def treinar_modelo(liga_ativa):
 
     peso_final = peso_liga * tabela_ia["patch_peso"]
 
-    modelo = RandomForestClassifier(
-        n_estimators = 150,
-        min_samples_leaf = 12,
-        max_depth = 20,
-        max_leaf_nodes = 3000,
-        random_state = 42
-    )
+    rf = RandomForestClassifier(**PARAMS_RF, n_jobs = - 1)
 
-    modelo.fit(X, y, sample_weight = peso_final.values)
+    modelo = Pipeline([
+        ("multihot", FunctionTransformer(converter_multihot, kw_args = {"n_camp" : len(cod_camp.classes_)})),
+        ("rf", rf),
+    ])
+
+    modelo.fit(X, y, rf__sample_weight = peso_final.values)
+
+    modelo.named_steps["rf"].set_params(n_jobs = 1)
 
     return modelo
+
+    # modelo = RandomForestClassifier(
+    #     n_estimators = 150,
+    #     min_samples_leaf = 12,
+    #     max_depth = 20,
+    #     max_leaf_nodes = 3000,
+    #     random_state = 42
+    # )
+
+    # modelo.fit(X, y, sample_weight = peso_final.values)
+
+    # return modelo
 
 # %%
 from sklearn.ensemble import RandomForestClassifier
@@ -788,6 +801,42 @@ colunas_treino = [
 X = tabela_ia[colunas_treino]
 y = tabela_ia["champion_num"]
 
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
+
+COLUNAS_FIXAS = ["teamname_num", "oponente_num", "position_num", "firstPick", "ordem_pick", "patch_num"]
+COLUNAS_ALIADOS = ["p1", "p2", "p3", "p4"]
+COLUNAS_INIMIGOS = ["o1", "o2", "o3", "o4", "o5"]
+COLUNAS_BANS = [f"b{i}" for i in range(1, 11)]
+
+def converter_multihot(tabela, n_camp):
+
+    linhas = len(tabela)
+    blocos = [tabela[COLUNAS_FIXAS].to_numpy(dtype = np.float32)]
+
+    for colunas in (COLUNAS_ALIADOS, COLUNAS_INIMIGOS, COLUNAS_BANS):
+        bloco = np.zeros((linhas, n_camp), dtype = np.float32)
+
+        for c in colunas:
+
+            id_campeoes = tabela[c].to_numpy().astype(int)
+            validos = (id_campeoes >= 0) & (id_campeoes < n_camp)
+            bloco[np.where(validos)[0], id_campeoes[validos]] = 1.0
+
+        blocos.append(bloco)
+
+    return np.hstack(blocos)
+
+
+PARAMS_RF = dict(
+    n_estimators = 150,
+    min_samples_leaf = 6,
+    max_depth = 20,
+    max_leaf_nodes = 3000,
+    max_features = 0.35,
+    random_state = 42
+)
+
 # modelo_ia = RandomForestClassifier(
 #     n_estimators = 150,
 #     min_samples_leaf = 12,
@@ -1001,10 +1050,18 @@ def processar_bans(tabela_liga_ativa, meia_vida_dias = 45):
 
     bans_time = _contagem_bans_peso(jogos_time, ["ban1", "ban2", "ban3"], status_fp)
 
+    todos_bans = _contagem_bans_peso(jogos_time, ["ban1", "ban2", "ban3", "ban4", "ban5"], status_fp)
+    todos_pick = _contagem_bans_peso(jogos_time, ["pick1", "pick2", "pick3", "pick4", "pick5"], status_fp)
+
     ban_fase1_fp = identificar_first_pick(bans_time, 1)
     ban_fase1_lp = identificar_first_pick(bans_time, 0)
 
     bans_adv = _contagem_bans_peso(jogos_time, ["ban1_adv", "ban2_adv", "ban3_adv", "ban4_adv", "ban5_adv"], status_fp)
+
+    todos_bans_fp = identificar_first_pick(todos_bans, 1)
+    todos_bans_lp = identificar_first_pick(todos_bans, 0)
+    picks_fp = identificar_first_pick(todos_pick, 1)
+    picks_lp =  identificar_first_pick(todos_pick, 0)
 
     ban_contra_fp = identificar_first_pick(bans_adv, 1)
     ban_contra_lp = identificar_first_pick(bans_adv, 0)
@@ -1062,7 +1119,11 @@ def processar_bans(tabela_liga_ativa, meia_vida_dias = 45):
         "bans_vs_fp" : bans_vs_fp,
         "bans_vs_lp" : bans_vs_lp,
         "jogos_vs_fp": jogos_vs_fp,
-        "jogos_vs_lp" : jogos_vs_lp
+        "jogos_vs_lp" : jogos_vs_lp,
+        "todos_bans_fp" : todos_bans_fp,
+        "todos_bans_lp" : todos_bans_lp,
+        "picks_fp" : picks_fp,
+        "picks_lp" : picks_lp
     }
 
 picks_stats = processar_picks(tabela_liga_ativa)
@@ -1081,14 +1142,21 @@ ban_fase1_fp = bans_stats["ban_fase1_fp"]
 ban_fase1_lp = bans_stats["ban_fase1_lp"]
 total_fp = bans_stats["total_fp"]
 total_lp = bans_stats["total_lp"]
+
 ban_contra_fp = bans_stats["ban_contra_fp"]
 ban_contra_lp = bans_stats["ban_contra_lp"]
 total_contra_fp = bans_stats["total_contra_fp"]
 total_contra_lp = bans_stats["total_contra_lp"]
+
 bans_vs_fp = bans_stats["bans_vs_fp"]
 bans_vs_lp = bans_stats["bans_vs_lp"]
 jogos_vs_fp = bans_stats["jogos_vs_fp"]
 jogos_vs_lp = bans_stats["jogos_vs_lp"]
+
+todos_bans_fp = bans_stats["todos_bans_fp"]
+todos_bans_lp = bans_stats["todos_bans_lp"]
+picks_fp = bans_stats["picks_fp"]
+picks_lp = bans_stats["picks_lp"]
 
 # %%
 caminho_dados_draft = os.path.join(pasta_raiz, "modelos_treinados", "dados_draft.joblib")
@@ -1505,7 +1573,7 @@ import modelos_cache
 
 limiar_flex = 0.10
 minimo_exposicao = 3
-limitar_ban_proprio = 0.03
+limitar_ban_proprio = 0.23
 
 patch_atual = int(tabela_final["patch_num"].max())
 tot_picks_geral = sum(contagem_exposicao.values())
@@ -1658,6 +1726,10 @@ def peso_counter_condicional(vitorias, qtd_jogos, win_rate_geral, k_credibilidad
 def forca_matchup(camp, inimigo, buff = 1.5):
 
     total_jogos = matchup_total.get((camp, inimigo), 0)
+
+    if total_jogos < 75:
+        return 0.0
+    
     vitorias = matchup_vitorias.get((camp, inimigo), 0)
 
     impacto_matchup = peso_counter_condicional(vitorias, total_jogos, 0.5)
@@ -1672,7 +1744,7 @@ def resposta_camp(camp, inimigo): # vOu mudar o nome
 
     presenca_pick = contagem_exposicao.get(camp, 0) / tot_picks_geral if tot_picks_geral > 0 else 0
 
-    peso_resposta = peso_counter_condicional(pick_contra_adv, pick_adv_global, presenca_pick)
+    peso_resposta = peso_counter_condicional(pick_contra_adv, pick_adv_global, presenca_pick, k_credibilidade = 350)
 
     return peso_resposta
     
@@ -1818,7 +1890,7 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                     bonus_oportunidade = (taxa_ameaca * 0.40) * decaida
 
             if e_primeiro_pick_time and time_tem_p1_no_jogo:
-                champs_geral_p1 = prioridade_p1.loc[time1].get(camp, 0)
+                champs_geral_p1 = prioridade_p1.loc[time1].get(camp, 0) if time1 in prioridade_p1.index else 0
                 champ_confronto_p1 = picks_fp_confronto.get((time1, time2), {}).get(camp, 0)
                 confronto_fp_total = total_fp_confronto.get((time1, time2), 0)
                 prio_time = nota_contexto(champs_geral_p1, champ_confronto_p1, confronto_fp_total)
@@ -1870,7 +1942,7 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                         bonus_sinergia = (media_sinergia * 0.6) + (max_sinergia * 0.4)
 
                         bonus_dupla = 0.04 if max_sinergia >= 0.25 else 0
-                        bonus_sinergia = min(bonus_sinergia + bonus_dupla, 0.30)
+                        bonus_sinergia = min(bonus_sinergia + bonus_dupla, 0.35)
                     
                     bonus_sinergia *= fator_pool
 
@@ -1925,8 +1997,14 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                         avg_punicao = 0
 
                     if adv_lane:
-                        balanco_positivo = (forca_lane * 0.65) + (avg_forca * 0.35)
-                        balanco_negativo = (punicao_lane * 0.65) + (avg_punicao * 0.35)
+
+                        if lista_forcas:
+                            balanco_positivo = (forca_lane * 0.65) + (avg_forca * 0.35)
+                            balanco_negativo = (punicao_lane * 0.65) + (avg_punicao * 0.35)
+                        else:
+                            balanco_positivo = forca_lane
+                            balanco_negativo = punicao_lane
+
                     else:
                         if len(lista_forcas) > 0:
                             max_forca = max(lista_forcas)
@@ -1953,7 +2031,7 @@ def sugeriPicks(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, pick
                     
                     score_resposta = max(min((resp_pos - resp_neg) * 2.5, 0.15), - 0.15)
 
-                    bonus_counter_bruto = (score_matchup * 0.7) + (score_resposta * 0.3)
+                    bonus_counter_bruto = (score_matchup * 0.5) + (score_resposta * 0.5)
                     bonus_counter = bonus_counter_bruto * fator_pool
 
                 score = (
@@ -2053,17 +2131,7 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
     # Counter
 
-    score_counter = {}
-
-    if picksTime1:
-
-        for camp in cod_camp.classes_:
-            forca_total = 0
-
-            for meu_pick in picksTime1:
-                forca_total += max(forca_matchup(camp, meu_pick), 0)
-
-            score_counter[camp] = min(forca_total / len(picksTime1), 0.25)
+    rotas_ocupadas_aliado = get_posicoes_ocupadas(picksTime1, dna_campeoes)
 
     n_picks_feitos = len(picksTime2) + len(picksTime1)
     num_bans = preparar_bans(bansTime1, bansTime2, time_tem_p1_no_jogo)
@@ -2123,7 +2191,7 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
         for camp in pool_rota:
 
             prio_inimigo = 0
-            prio_aliado = 0
+            taxa_conforto = 0
 
             if time2 in prioridade_historica.index:
                 champ_geral_adv = jogados_rota_adv.get(camp, 0)
@@ -2131,16 +2199,23 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
                 prio_inimigo = nota_contexto(champ_geral_adv, prio_norma_adv, peso_pool_adv, 8, 0.25)
 
-            if time1 in prioridade_historica.index:
-                prio_aliado = prioridade_historica.loc[time1].get(camp, 0)
+            total_jogos_aliado = total_aliado_ctx.get(time1, 1)
+            picks_lado = picks_fp if time_tem_p1_no_jogo else picks_lp
+            bans_lado = todos_bans_fp if time_tem_p1_no_jogo else todos_bans_lp
 
-            if prio_aliado > limitar_ban_proprio:
+            if total_jogos_aliado > 0:
+
+                taxa_pick_lado = picks_lado.get((time1, camp), 0) / total_jogos_aliado
+                taxa_ban_lado = bans_lado.get((time1, camp), 0) / total_jogos_aliado
+
+                taxa_conforto = taxa_pick_lado - taxa_ban_lado
+
+            if taxa_conforto > limitar_ban_proprio:
                 continue
 
             pref_ia = ranking_inimigo.get(camp, 0)
             meta_ban = (df_meta.loc[camp, "ban_rate"] / 100) if camp in df_meta.index else 0
 
-            total_jogos_aliado = total_aliado_ctx.get(time1, 1)
             contagem_bans = historico_aliado.get((time1, camp), 0)
             
             nota_bans_champ = bans_champ_vs.get((time1, time2), {}).get(camp, 0)
@@ -2176,17 +2251,86 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
 
             if picksTime2:
 
+                lista_sinergia = []
+
                 for pick_adv in picksTime2:
                     par = tuple(sorted([camp, pick_adv]))
                     n_juntos = contagem_pares.get(par, 0)
                     n_pick = contagem_exposicao.get(pick_adv, 0)
 
                     if n_pick >= minimo_exposicao:
-                        bonus_combo_adv += n_juntos / n_pick
+                        lista_sinergia.append(n_juntos / n_pick)
 
-                bonus_combo_adv = min(bonus_combo_adv / len(picksTime2), 0.25)
+                if lista_sinergia:
+                    media_sinergia = sum(lista_sinergia) / len(lista_sinergia)
+                    max_sinergia = max(lista_sinergia)
+                    bonus_combo_adv = (media_sinergia * 0.6) + (max_sinergia * 0.4)
 
-            bonus_counter_aliado = score_counter.get(camp, 0)
+                    bonus_dupla = 0.04 if max_sinergia >= 0.25 else 0
+                    bonus_combo_adv = min(bonus_combo_adv + bonus_dupla, 0.35)
+
+            bonus_counter_aliado = 0
+
+            if picksTime1:
+                lane_aliado = None
+
+                if rota in rotas_ocupadas_aliado:
+                    maior_pct = -1 
+
+                    for meu_pick in picksTime1:
+
+                        if meu_pick in dna_campeoes:
+                            pct = dna_campeoes[meu_pick].get(rota, 0)
+
+                            if pct > limiar_flex and pct > maior_pct:
+                                maior_pct = pct
+                                lane_aliado = meu_pick
+
+                lista_forcas = []
+                lista_punicao = []
+                lista_resposta = []
+                lista_puni_resposta = []
+                forca_lane = 0
+                punicao_lane = 0
+
+                for meu_pick in picksTime1:
+                    
+                    valor_matchup = forca_matchup(camp, meu_pick)
+
+                    forca = max(valor_matchup, 0)
+                    punicao = max(-valor_matchup, 0)
+
+                    if meu_pick == lane_aliado:
+                        forca_lane = forca
+                        punicao_lane = punicao
+                    else:
+                        lista_forcas.append(forca)
+                        lista_punicao.append(punicao)
+
+                    lista_resposta.append(resposta_camp(camp, meu_pick))
+                    lista_puni_resposta.append(resposta_camp(meu_pick, camp))
+
+                avg_forca = sum(lista_forcas) / len(lista_forcas) if lista_forcas else 0
+                avg_punicao = sum(lista_punicao) / len(lista_punicao) if lista_punicao else 0
+
+                if lane_aliado:
+                    balanco_positivo = (forca_lane * 0.65) + (avg_forca * 0.35)
+                    balanco_negativo = (punicao_lane * 0.65) + (avg_punicao * 0.35)
+                else:
+                    max_forca = max(lista_forcas, default = 0)
+                    max_punicao = max(lista_punicao, default = 0)
+
+                    balanco_positivo = (avg_forca * 0.6) + (max_forca * 0.4)
+                    balanco_negativo = (avg_punicao * 0.6) + (max_punicao * 0.4)
+
+                score_matchup = min(balanco_positivo, 0.20) - min(balanco_negativo, 0.25)
+
+                resp_pos = sum(lista_resposta) / len(lista_resposta)
+                resp_neg = sum(lista_puni_resposta) / len(lista_puni_resposta)
+
+                score_resposta = max(min((resp_pos - resp_neg) * 2.5, 0.15), -0.15)
+
+                bonus_counter_aliado = (score_matchup * 0.5) + (score_resposta * 0.5)
 
             bonus_fase2 = 0
 
@@ -2196,8 +2340,8 @@ def sugeriBans(time1, bansTime1, picksTime1, time2, bansTime2, picksTime2, picks
             if len(picksTime1) >= 3:
 
                 score_perigo = (
-                    (prio_inimigo * 0.32) + (pref_ia * 0.18) + (meta_ban * 0.05) +
-                    (bonus_combo_adv * 0.12) + (bonus_counter_aliado * 0.14) + 
+                    (prio_inimigo * 0.33) + (pref_ia * 0.18) + (meta_ban * 0.03) +
+                    (bonus_combo_adv * 0.15) + (bonus_counter_aliado * 0.14) + 
                     (bonus_fase2 * 0.15) + (bonus_ameaca_oculta * 0.02) 
                 )
 

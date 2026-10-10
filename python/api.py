@@ -55,6 +55,27 @@ def listar_campeoes():
     return cblol.obter_campeoes()
 
 
+@app.get("/campeoes/dna")
+def campeoes_dna(posicao : str = Query(...)):
+
+    identidade_champ = []
+
+    for camp, rotas in cblol.dna_campeoes.items():
+
+        pct = rotas.get(posicao, 0)
+
+        if pct >= cblol.limiar_flex:
+            identidade_champ.append({
+                "champion" : camp,
+                "porcentagem" : round(pct * 100, 1)
+            })
+
+    def extrair_nome(nome_camp):
+        return nome_camp["champion"]
+
+    return sorted(identidade_champ, key = extrair_nome)
+
+
 @app.get("/stats/draft")
 def bans_analise(
     nome: str = Query(...), 
