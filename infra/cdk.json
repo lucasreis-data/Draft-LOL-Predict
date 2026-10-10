@@ -1,0 +1,7 @@
+{
+  "app": "py app.py",
+  "watch": { "include": ["**"], "exclude": ["cdk.out", ".venv", "__pycache__"] },
+  "context": {
+    "@aws-cdk/core:defaultCrossStackReferences": "strong"
+  }
+}

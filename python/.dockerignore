@@ -1,0 +1,7 @@
+csv/
+cache_dados/
+modelos_treinados/*.joblib
+.venv/
+__pycache__/
+*.ipynb
+cblolQ.py

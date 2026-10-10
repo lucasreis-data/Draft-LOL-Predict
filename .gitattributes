@@ -1,0 +1,2 @@
+# entrypoint.sh precisa de quebra de linha LF (CRLF quebra o container)
+*.sh text eol=lf
