@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:8080/draft'
+const BASE_URL = '/draft'
 
 let sessionIdGlobal = null;
 export const draftService = {
